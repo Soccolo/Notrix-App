@@ -766,7 +766,7 @@ def build_pdf(K_grid, iv_spline_tck, S, T, r):
 def smooth_pdf(K_grid, pdf_raw):
     kde = gaussian_kde(K_grid, weights=pdf_raw)
     pdf_smooth = kde(K_grid)
-    area = np.trapz(pdf_smooth, K_grid)
+    area = np.trapezoid(pdf_smooth, K_grid)
     if area > 0:
         pdf_smooth /= area
     return pdf_smooth
@@ -798,7 +798,7 @@ def convolve_pdfs(x_lists, pdf_lists):
         x_result = x_min_new + np.arange(len(pdf_conv)) * dx
         pdf_result = pdf_conv
 
-    pdf_result = pdf_result / np.trapz(pdf_result, x_result)
+    pdf_result = pdf_result / np.trapezoid(pdf_result, x_result)
     return x_result, pdf_result
 
 def calculate_percentile(x_values, pdf_values, percentile):
@@ -824,7 +824,7 @@ def calculate_probability_below(x_values, pdf_values, threshold):
         return 0.0
     x_below = x_values[mask]
     pdf_below = pdf_values[mask]
-    return np.trapz(pdf_below, x_below)
+    return np.trapezoid(pdf_below, x_below)
 
 def ticker_prediction(ticker_idx, stock_list, possible_expirations, expiration_idx, risk_free_rate, min_volume, max_spread_ratio):
     import io
@@ -1495,7 +1495,7 @@ def main():
                         progress_bar.progress(100)
                         
                         # Calculate statistics
-                        expected_value = np.trapz(investment_values_final * pdf_values_final, investment_values_final)
+                        expected_value = np.trapezoid(investment_values_final * pdf_values_final, investment_values_final)
                         current_value_leveraged = sum(stock_list['Value']) + free_capital
                         unleveraged_capital = sum(stock_list['Unleveraged Value']) + free_capital
                         expected_gain = expected_value - current_value_leveraged
