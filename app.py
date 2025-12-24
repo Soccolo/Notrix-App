@@ -104,6 +104,61 @@ st.markdown("""
 
 # ============ ALTERNATIVE DATA SOURCE FUNCTIONS ============
 
+def safe_get_column(df, col_name):
+    """Safely get a column from DataFrame that might have MultiIndex columns"""
+    if df is None or len(df) == 0:
+        return None
+    try:
+        # If it's a MultiIndex column DataFrame from yf.download
+        if isinstance(df.columns, pd.MultiIndex):
+            # Try to get the column for any ticker
+            if col_name in df.columns.get_level_values(0):
+                return df[col_name].iloc[:, 0] if isinstance(df[col_name], pd.DataFrame) else df[col_name]
+            # Try the second level
+            for col in df.columns:
+                if col[0] == col_name or col[1] == col_name:
+                    return df[col]
+        # Regular DataFrame
+        if col_name in df.columns:
+            col_data = df[col_name]
+            # If it's still a DataFrame with one column, convert to Series
+            if isinstance(col_data, pd.DataFrame):
+                return col_data.iloc[:, 0]
+            return col_data
+    except Exception:
+        pass
+    return None
+
+def safe_get_value(df, col_name, idx=-1):
+    """Safely get a single value from a DataFrame column"""
+    col = safe_get_column(df, col_name)
+    if col is not None and len(col) > 0:
+        try:
+            val = col.iloc[idx]
+            return float(val)
+        except:
+            pass
+    return None
+
+def normalize_dataframe(df):
+    """Normalize DataFrame columns to simple format (handle MultiIndex from yf.download)"""
+    if df is None or len(df) == 0:
+        return df
+    
+    try:
+        # If MultiIndex columns, flatten them
+        if isinstance(df.columns, pd.MultiIndex):
+            # Get the first level of column names
+            new_df = pd.DataFrame(index=df.index)
+            for col_name in ['Open', 'High', 'Low', 'Close', 'Volume']:
+                col_data = safe_get_column(df, col_name)
+                if col_data is not None:
+                    new_df[col_name] = col_data
+            return new_df
+        return df
+    except Exception:
+        return df
+
 def get_finnhub_quote(symbol, api_key):
     """Get quote from Finnhub API"""
     if not api_key:
@@ -300,13 +355,13 @@ def safe_yf_download(symbol, period='5d', max_retries=2, delay=1):
     for attempt in range(max_retries):
         data = fetch_from_yahoo_download(symbol, period)
         if data is not None and len(data) > 0:
-            return data
+            return normalize_dataframe(data)
         time.sleep(delay)
     
     for attempt in range(max_retries):
         data = fetch_from_ticker_history(symbol, period)
         if data is not None and len(data) > 0:
-            return data
+            return normalize_dataframe(data)
         time.sleep(delay)
     
     return None
@@ -593,8 +648,7 @@ def get_insurance_news():
     """Fetch insurance industry news"""
     feeds = [
         ('Insurance Journal', 'https://www.insurancejournal.com/feed/'),
-        ('Insurance News Net', 'https://insurancenewsnet.com/feed/'),
-        ('Insurance Insider Financial Lines', 'https://www.insuranceinsider.com/lines-of-business/commercial-lines/financial-and-professional-lines'),
+        ('Insurance News Net', 'https://insurancenewsnet.com/feed'),
     ]
     
     all_news = []
@@ -766,7 +820,7 @@ def build_pdf(K_grid, iv_spline_tck, S, T, r):
 def smooth_pdf(K_grid, pdf_raw):
     kde = gaussian_kde(K_grid, weights=pdf_raw)
     pdf_smooth = kde(K_grid)
-    area = np.trapezoid(pdf_smooth, K_grid)
+    area = np.trapz(pdf_smooth, K_grid)
     if area > 0:
         pdf_smooth /= area
     return pdf_smooth
@@ -798,7 +852,7 @@ def convolve_pdfs(x_lists, pdf_lists):
         x_result = x_min_new + np.arange(len(pdf_conv)) * dx
         pdf_result = pdf_conv
 
-    pdf_result = pdf_result / np.trapezoid(pdf_result, x_result)
+    pdf_result = pdf_result / np.trapz(pdf_result, x_result)
     return x_result, pdf_result
 
 def calculate_percentile(x_values, pdf_values, percentile):
@@ -824,7 +878,7 @@ def calculate_probability_below(x_values, pdf_values, threshold):
         return 0.0
     x_below = x_values[mask]
     pdf_below = pdf_values[mask]
-    return np.trapezoid(pdf_below, x_below)
+    return np.trapz(pdf_below, x_below)
 
 def ticker_prediction(ticker_idx, stock_list, possible_expirations, expiration_idx, risk_free_rate, min_volume, max_spread_ratio):
     import io
@@ -1128,155 +1182,174 @@ def main():
                     if data_source:
                         st.caption(f"📡 Data source: {data_source}")
                     
-                    # Company info
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Current Price", f"${hist['Close'].iloc[-1]:.2f}")
-                    with col2:
-                        day_change = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2]) * 100 if len(hist) > 1 else 0
-                        st.metric("Day Change", f"{day_change:+.2f}%")
-                    with col3:
-                        st.metric("Period High", f"${hist['High'].max():.2f}")
-                    with col4:
-                        st.metric("Period Low", f"${hist['Low'].min():.2f}")
+                    # Safely get price values
+                    current_price = safe_get_value(hist, 'Close', -1)
+                    prev_price = safe_get_value(hist, 'Close', -2) if len(hist) > 1 else current_price
+                    high_price = safe_get_column(hist, 'High')
+                    low_price = safe_get_column(hist, 'Low')
                     
-                    # Stock chart with technical indicators
-                    st.subheader("📊 Price Chart & Technical Analysis")
-                    
-                    # Calculate indicators
-                    hist['SMA_20'] = hist['Close'].rolling(20).mean()
-                    hist['SMA_50'] = hist['Close'].rolling(50).mean()
-                    upper, middle, lower = calculate_bollinger_bands(hist['Close'])
-                    hist['BB_Upper'] = upper
-                    hist['BB_Middle'] = middle
-                    hist['BB_Lower'] = lower
-                    
-                    # Create subplot figure
-                    fig = make_subplots(
-                        rows=3, cols=1,
-                        shared_xaxes=True,
-                        vertical_spacing=0.05,
-                        row_heights=[0.6, 0.2, 0.2],
-                        subplot_titles=('Price & Indicators', 'Volume', 'RSI')
-                    )
-                    
-                    # Candlestick chart
-                    fig.add_trace(go.Candlestick(
-                        x=hist.index,
-                        open=hist['Open'],
-                        high=hist['High'],
-                        low=hist['Low'],
-                        close=hist['Close'],
-                        name='Price'
-                    ), row=1, col=1)
-                    
-                    # Moving averages
-                    fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA_20'], name='SMA 20', 
-                                            line=dict(color='orange', width=1)), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA_50'], name='SMA 50', 
-                                            line=dict(color='blue', width=1)), row=1, col=1)
-                    
-                    # Bollinger Bands
-                    fig.add_trace(go.Scatter(x=hist.index, y=hist['BB_Upper'], name='BB Upper',
-                                            line=dict(color='gray', width=1, dash='dot')), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=hist.index, y=hist['BB_Lower'], name='BB Lower',
-                                            line=dict(color='gray', width=1, dash='dot'),
-                                            fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
-                    
-                    # Volume
-                    colors = ['red' if hist['Close'].iloc[i] < hist['Open'].iloc[i] else 'green' 
-                             for i in range(len(hist))]
-                    fig.add_trace(go.Bar(x=hist.index, y=hist['Volume'], name='Volume',
-                                        marker_color=colors), row=2, col=1)
-                    
-                    # RSI
-                    rsi = calculate_rsi(hist['Close'])
-                    fig.add_trace(go.Scatter(x=hist.index, y=rsi, name='RSI',
-                                            line=dict(color='purple', width=2)), row=3, col=1)
-                    fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
-                    fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
-                    
-                    fig.update_layout(
-                        template='plotly_dark',
-                        height=700,
-                        showlegend=True,
-                        xaxis_rangeslider_visible=False
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Prediction section
-                    st.subheader("🔮 Stock Movement Prediction")
-                    
-                    prediction, score, signals = predict_stock_movement(hist)
-                    
-                    if prediction:
-                        pred_col1, pred_col2 = st.columns([1, 2])
-                        
-                        with pred_col1:
-                            if prediction == "BULLISH":
-                                st.success(f"### 📈 {prediction}")
-                                st.metric("Confidence Score", f"{score:.1f}/100")
-                            elif prediction == "BEARISH":
-                                st.error(f"### 📉 {prediction}")
-                                st.metric("Confidence Score", f"{score:.1f}/100")
-                            else:
-                                st.warning(f"### ➡️ {prediction}")
-                                st.metric("Confidence Score", f"{score:.1f}/100")
-                        
-                        with pred_col2:
-                            st.write("**Technical Signals:**")
-                            for signal in signals:
-                                if "bullish" in signal.lower():
-                                    st.markdown(f"- 🟢 {signal}")
-                                elif "bearish" in signal.lower():
-                                    st.markdown(f"- 🔴 {signal}")
-                                else:
-                                    st.markdown(f"- 🟡 {signal}")
-                        
-                        st.info("⚠️ This prediction is based on technical analysis only. Always do your own research before making investment decisions.")
-                    
-                    # News and Sentiment
-                    st.subheader("📰 News & Sentiment Analysis")
-                    
-                    with st.spinner("Fetching news..."):
-                        news, news_source = get_stock_news_multi_source(search_symbol, api_keys)
-                    
-                    if news:
-                        if news_source:
-                            st.caption(f"📡 News source: {news_source}")
-                        
-                        sentiments = []
-                        for article in news[:5]:
-                            title = article.get('title', 'No title')
-                            link = article.get('link', '#')
-                            publisher = article.get('publisher', 'Unknown')
-                            
-                            sentiment, polarity = analyze_sentiment(title)
-                            sentiments.append(polarity)
-                            
-                            if sentiment == 'Positive':
-                                sentiment_badge = "🟢 Positive"
-                            elif sentiment == 'Negative':
-                                sentiment_badge = "🔴 Negative"
-                            else:
-                                sentiment_badge = "🟡 Neutral"
-                            
-                            with st.container():
-                                st.markdown(f"""
-                                **{title}**  
-                                *{publisher}* | {sentiment_badge}  
-                                [Read more]({link})
-                                """)
-                                st.divider()
-                        
-                        # Overall sentiment
-                        avg_sentiment = np.mean(sentiments) if sentiments else 0
-                        st.metric("Overall News Sentiment", 
-                                 "Positive" if avg_sentiment > 0.1 else "Negative" if avg_sentiment < -0.1 else "Neutral",
-                                 f"{avg_sentiment:.2f}")
+                    if current_price is None:
+                        st.error(f"Could not parse price data for {search_symbol}")
                     else:
-                        st.info("No recent news available for this stock.")
+                        # Company info
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Current Price", f"${current_price:.2f}")
+                        with col2:
+                            day_change = ((current_price - prev_price) / prev_price) * 100 if prev_price and prev_price > 0 else 0
+                            st.metric("Day Change", f"{day_change:+.2f}%")
+                        with col3:
+                            high_val = float(high_price.max()) if high_price is not None else current_price
+                            st.metric("Period High", f"${high_val:.2f}")
+                        with col4:
+                            low_val = float(low_price.min()) if low_price is not None else current_price
+                            st.metric("Period Low", f"${low_val:.2f}")
+                        
+                        # Stock chart with technical indicators
+                        st.subheader("📊 Price Chart & Technical Analysis")
+                        
+                        # Ensure we have proper Series for calculations
+                        close_series = safe_get_column(hist, 'Close')
+                        open_series = safe_get_column(hist, 'Open')
+                        high_series = safe_get_column(hist, 'High')
+                        low_series = safe_get_column(hist, 'Low')
+                        volume_series = safe_get_column(hist, 'Volume')
+                        
+                        if close_series is not None and len(close_series) > 20:
+                            # Calculate indicators
+                            sma_20 = close_series.rolling(20).mean()
+                            sma_50 = close_series.rolling(50).mean()
+                            upper, middle, lower = calculate_bollinger_bands(close_series)
+                            
+                            # Create subplot figure
+                            fig = make_subplots(
+                                rows=3, cols=1,
+                                shared_xaxes=True,
+                                vertical_spacing=0.05,
+                                row_heights=[0.6, 0.2, 0.2],
+                                subplot_titles=('Price & Indicators', 'Volume', 'RSI')
+                            )
+                            
+                            # Candlestick chart
+                            fig.add_trace(go.Candlestick(
+                                x=hist.index,
+                                open=open_series,
+                                high=high_series,
+                                low=low_series,
+                                close=close_series,
+                                name='Price'
+                            ), row=1, col=1)
+                            
+                            # Moving averages
+                            fig.add_trace(go.Scatter(x=hist.index, y=sma_20, name='SMA 20', 
+                                                    line=dict(color='orange', width=1)), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=hist.index, y=sma_50, name='SMA 50', 
+                                                    line=dict(color='blue', width=1)), row=1, col=1)
+                            
+                            # Bollinger Bands
+                            fig.add_trace(go.Scatter(x=hist.index, y=upper, name='BB Upper',
+                                                    line=dict(color='gray', width=1, dash='dot')), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=hist.index, y=lower, name='BB Lower',
+                                                    line=dict(color='gray', width=1, dash='dot'),
+                                                    fill='tonexty', fillcolor='rgba(128,128,128,0.1)'), row=1, col=1)
+                            
+                            # Volume
+                            if volume_series is not None and open_series is not None:
+                                colors = ['red' if close_series.iloc[i] < open_series.iloc[i] else 'green' 
+                                         for i in range(len(close_series))]
+                                fig.add_trace(go.Bar(x=hist.index, y=volume_series, name='Volume',
+                                                    marker_color=colors), row=2, col=1)
+                            
+                            # RSI
+                            rsi = calculate_rsi(close_series)
+                            fig.add_trace(go.Scatter(x=hist.index, y=rsi, name='RSI',
+                                                    line=dict(color='purple', width=2)), row=3, col=1)
+                            fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+                            fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+                            
+                            fig.update_layout(
+                                template='plotly_dark',
+                                height=700,
+                                showlegend=True,
+                                xaxis_rangeslider_visible=False
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Prediction section
+                            st.subheader("🔮 Stock Movement Prediction")
+                            
+                            prediction, score, signals = predict_stock_movement(hist)
+                            
+                            if prediction:
+                                pred_col1, pred_col2 = st.columns([1, 2])
+                                
+                                with pred_col1:
+                                    if prediction == "BULLISH":
+                                        st.success(f"### 📈 {prediction}")
+                                        st.metric("Confidence Score", f"{score:.1f}/100")
+                                    elif prediction == "BEARISH":
+                                        st.error(f"### 📉 {prediction}")
+                                        st.metric("Confidence Score", f"{score:.1f}/100")
+                                    else:
+                                        st.warning(f"### ➡️ {prediction}")
+                                        st.metric("Confidence Score", f"{score:.1f}/100")
+                                
+                                with pred_col2:
+                                    st.write("**Technical Signals:**")
+                                    for signal in signals:
+                                        if "bullish" in signal.lower():
+                                            st.markdown(f"- 🟢 {signal}")
+                                        elif "bearish" in signal.lower():
+                                            st.markdown(f"- 🔴 {signal}")
+                                        else:
+                                            st.markdown(f"- 🟡 {signal}")
+                                
+                                st.info("⚠️ This prediction is based on technical analysis only. Always do your own research before making investment decisions.")
+                        else:
+                            st.warning("Not enough historical data for technical analysis (need at least 20 data points)")
+                        
+                        # News and Sentiment
+                        st.subheader("📰 News & Sentiment Analysis")
+                        
+                        with st.spinner("Fetching news..."):
+                            news, news_source = get_stock_news_multi_source(search_symbol, api_keys)
+                        
+                        if news:
+                            if news_source:
+                                st.caption(f"📡 News source: {news_source}")
+                            
+                            sentiments = []
+                            for article in news[:5]:
+                                title = article.get('title', 'No title')
+                                link = article.get('link', '#')
+                                publisher = article.get('publisher', 'Unknown')
+                                
+                                sentiment, polarity = analyze_sentiment(title)
+                                sentiments.append(polarity)
+                                
+                                if sentiment == 'Positive':
+                                    sentiment_badge = "🟢 Positive"
+                                elif sentiment == 'Negative':
+                                    sentiment_badge = "🔴 Negative"
+                                else:
+                                    sentiment_badge = "🟡 Neutral"
+                                
+                                with st.container():
+                                    st.markdown(f"""
+                                    **{title}**  
+                                    *{publisher}* | {sentiment_badge}  
+                                    [Read more]({link})
+                                    """)
+                                    st.divider()
+                            
+                            # Overall sentiment
+                            avg_sentiment = np.mean(sentiments) if sentiments else 0
+                            st.metric("Overall News Sentiment", 
+                                     "Positive" if avg_sentiment > 0.1 else "Negative" if avg_sentiment < -0.1 else "Neutral",
+                                     f"{avg_sentiment:.2f}")
+                        else:
+                            st.info("No recent news available for this stock.")
                 else:
                     st.error(f"Could not find data for symbol: {search_symbol}. Please try again in a few moments (API rate limits may apply).")
     
@@ -1495,7 +1568,7 @@ def main():
                         progress_bar.progress(100)
                         
                         # Calculate statistics
-                        expected_value = np.trapezoid(investment_values_final * pdf_values_final, investment_values_final)
+                        expected_value = np.trapz(investment_values_final * pdf_values_final, investment_values_final)
                         current_value_leveraged = sum(stock_list['Value']) + free_capital
                         unleveraged_capital = sum(stock_list['Unleveraged Value']) + free_capital
                         expected_gain = expected_value - current_value_leveraged
