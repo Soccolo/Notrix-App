@@ -562,8 +562,55 @@ def get_stock_news(symbol):
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         
-        return news[:10] if news else []
-    except:
+        if news:
+            # Normalize the news format - Yahoo Finance changed their structure
+            normalized_news = []
+            for item in news[:10]:
+                # Handle both old and new Yahoo Finance news formats
+                if isinstance(item, dict):
+                    # Try to extract title from various possible keys
+                    title = (item.get('title') or 
+                            item.get('headline') or 
+                            item.get('content', {}).get('title') if isinstance(item.get('content'), dict) else None or
+                            'No title')
+                    
+                    # Try to extract link from various possible keys
+                    link = (item.get('link') or 
+                           item.get('url') or 
+                           item.get('content', {}).get('canonicalUrl', {}).get('url') if isinstance(item.get('content'), dict) else None or
+                           '#')
+                    
+                    # Try to extract publisher from various possible keys
+                    publisher = (item.get('publisher') or 
+                                item.get('source') or
+                                item.get('content', {}).get('provider', {}).get('displayName') if isinstance(item.get('content'), dict) else None or
+                                'Unknown')
+                    
+                    # Handle nested content structure (new format)
+                    if item.get('content') and isinstance(item.get('content'), dict):
+                        content = item['content']
+                        if not title or title == 'No title':
+                            title = content.get('title', 'No title')
+                        if link == '#':
+                            canonical = content.get('canonicalUrl', {})
+                            if isinstance(canonical, dict):
+                                link = canonical.get('url', '#')
+                            elif isinstance(canonical, str):
+                                link = canonical
+                        if publisher == 'Unknown':
+                            provider = content.get('provider', {})
+                            if isinstance(provider, dict):
+                                publisher = provider.get('displayName', 'Unknown')
+                    
+                    normalized_news.append({
+                        'title': title,
+                        'link': link,
+                        'publisher': publisher
+                    })
+            
+            return normalized_news if normalized_news else []
+        return []
+    except Exception as e:
         return []
 
 def get_finnhub_news(symbol, api_key):
@@ -577,29 +624,32 @@ def get_finnhub_news(symbol, api_key):
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             news = response.json()
-            return [{'title': n.get('headline', ''), 
-                    'link': n.get('url', ''),
+            if news and isinstance(news, list):
+                return [{
+                    'title': n.get('headline', 'No title'),
+                    'link': n.get('url', '#'),
                     'publisher': n.get('source', 'Unknown'),
-                    'summary': n.get('summary', '')} for n in news[:10]]
-    except:
+                    'summary': n.get('summary', '')
+                } for n in news[:10]]
+    except Exception as e:
         pass
     return []
 
 def get_stock_news_multi_source(symbol, api_keys=None):
-    """Get news from multiple sources"""
+    """Get news from multiple sources - prioritize Finnhub for better news data"""
     if api_keys is None:
         api_keys = {}
     
-    # Try Yahoo first
-    news = get_stock_news(symbol)
-    if news:
-        return news, 'Yahoo'
-    
-    # Try Finnhub
+    # Try Finnhub first (better news quality)
     if api_keys.get('finnhub'):
         news = get_finnhub_news(symbol, api_keys['finnhub'])
-        if news:
+        if news and len(news) > 0 and news[0].get('title') != 'No title':
             return news, 'Finnhub'
+    
+    # Try Yahoo as fallback
+    news = get_stock_news(symbol)
+    if news and len(news) > 0 and news[0].get('title') != 'No title':
+        return news, 'Yahoo'
     
     return [], None
 
@@ -1315,12 +1365,15 @@ def main():
                         with st.spinner("Fetching news..."):
                             news, news_source = get_stock_news_multi_source(search_symbol, api_keys)
                         
-                        if news:
+                        # Filter out news items with no real title
+                        valid_news = [n for n in news if n.get('title') and n.get('title') != 'No title' and len(n.get('title', '')) > 5]
+                        
+                        if valid_news:
                             if news_source:
                                 st.caption(f"📡 News source: {news_source}")
                             
                             sentiments = []
-                            for article in news[:5]:
+                            for article in valid_news[:5]:
                                 title = article.get('title', 'No title')
                                 link = article.get('link', '#')
                                 publisher = article.get('publisher', 'Unknown')
@@ -1349,7 +1402,7 @@ def main():
                                      "Positive" if avg_sentiment > 0.1 else "Negative" if avg_sentiment < -0.1 else "Neutral",
                                      f"{avg_sentiment:.2f}")
                         else:
-                            st.info("No recent news available for this stock.")
+                            st.info("📭 No recent news available for this stock. Try adding a Finnhub API key for better news coverage.")
                 else:
                     st.error(f"Could not find data for symbol: {search_symbol}. Please try again in a few moments (API rate limits may apply).")
     
