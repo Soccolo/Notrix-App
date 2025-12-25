@@ -1304,6 +1304,7 @@ def get_insurance_company_data():
         'BEZ.L': {'name': 'Beazley', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 100'},
         'LRE.L': {'name': 'Lancashire Holdings', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 250'},
         'PRU.L': {'name': 'Prudential', 'type': 'Life & Pensions', 'market': 'FTSE 100'},
+        'ZURN.SW': {'name': 'Zurich Insurance Group', 'type': 'Composite', 'market': 'CBOE'}
     }
     
     # Combined Operating Ratios (COR) - Latest reported figures
@@ -1318,6 +1319,7 @@ def get_insurance_company_data():
         'BEZ.L': {'cor': 79.0, 'year': '2024', 'note': 'Group COR'},
         'LRE.L': {'cor': 83.5, 'year': '2024', 'note': 'Group COR'},
         'PRU.L': {'cor': None, 'year': None, 'note': 'Life insurer - N/A'},
+        'ZURN.SW':{'cor': 92.4, 'year': '2025', 'note': 'P&C COR'}
     }
     
     # US/Global brokers for comparison
