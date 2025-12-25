@@ -2653,6 +2653,81 @@ def main():
                     filtered_events = [e for e in events if e.get('impact', 'low').lower() in impact_filter]
                     
                     if filtered_events:
+                        # Event descriptions dictionary
+                        event_descriptions = {
+                            # US Events
+                            'non-farm payrolls': 'Measures jobs added/lost in the US economy excluding farm workers. Key indicator of economic health.',
+                            'nonfarm payrolls': 'Measures jobs added/lost in the US economy excluding farm workers. Key indicator of economic health.',
+                            'unemployment rate': 'Percentage of the labor force that is jobless and actively seeking employment.',
+                            'cpi': 'Consumer Price Index - measures inflation by tracking price changes of goods and services.',
+                            'inflation': 'Measures the rate at which prices for goods and services are rising.',
+                            'retail sales': 'Total receipts of retail stores. Indicates consumer spending strength.',
+                            'initial jobless claims': 'Weekly count of new unemployment insurance claims. Leading economic indicator.',
+                            'jobless claims': 'Weekly count of new unemployment insurance claims. Leading economic indicator.',
+                            'gdp': 'Gross Domestic Product - total value of goods and services produced. Primary measure of economic growth.',
+                            'fed': 'Federal Reserve interest rate decision affects borrowing costs across the economy.',
+                            'fomc': 'Federal Open Market Committee sets US monetary policy and interest rates.',
+                            'interest rate': 'Central bank rate that influences borrowing costs, inflation, and currency value.',
+                            'pmi': 'Purchasing Managers Index - survey of business conditions. Above 50 = expansion.',
+                            'ism manufacturing': 'Institute for Supply Management survey of US manufacturing activity.',
+                            'consumer confidence': 'Survey measuring household optimism about the economy and personal finances.',
+                            'durable goods': 'Orders for long-lasting manufactured goods. Indicates business investment.',
+                            'housing starts': 'Number of new residential construction projects begun.',
+                            'existing home sales': 'Annualized number of existing residential buildings sold.',
+                            'new home sales': 'Annualized number of newly constructed homes sold.',
+                            'trade balance': 'Difference between exports and imports. Affects currency and GDP.',
+                            'core pce': 'Fed\'s preferred inflation measure excluding food and energy prices.',
+                            
+                            # EU Events
+                            'ecb': 'European Central Bank interest rate decision for the Eurozone.',
+                            'zew': 'German investor sentiment survey. Leading indicator for Europe.',
+                            'ifo': 'German business climate index based on company surveys.',
+                            'eurozone cpi': 'Consumer inflation across the 20 Eurozone countries.',
+                            'eurozone gdp': 'Economic output of the entire Eurozone economy.',
+                            'german': 'Data from Germany, Europe\'s largest economy and key EU indicator.',
+                            
+                            # UK Events
+                            'boe': 'Bank of England interest rate decision for the UK.',
+                            'bank of england': 'Bank of England interest rate decision for the UK.',
+                            'uk cpi': 'Consumer inflation in the United Kingdom.',
+                            'uk gdp': 'Economic output of the United Kingdom.',
+                            'uk employment': 'UK labor market data including jobs and wage growth.',
+                            'claimant count': 'Number of people claiming unemployment benefits in the UK.',
+                            
+                            # Japan Events
+                            'boj': 'Bank of Japan interest rate and monetary policy decision.',
+                            'bank of japan': 'Bank of Japan interest rate and monetary policy decision.',
+                            'tankan': 'Bank of Japan quarterly survey of business sentiment.',
+                            'japan cpi': 'Consumer inflation in Japan.',
+                            'japan gdp': 'Economic output of Japan, world\'s 4th largest economy.',
+                        }
+                        
+                        def get_event_description(event_name):
+                            """Find matching description for an event"""
+                            event_lower = event_name.lower()
+                            for key, desc in event_descriptions.items():
+                                if key in event_lower:
+                                    return desc
+                            return None
+                        
+                        # Country display mapping
+                        country_display = {
+                            'US': ('🇺🇸', 'United States'),
+                            'USA': ('🇺🇸', 'United States'),
+                            'EU': ('🇪🇺', 'Eurozone'),
+                            'EMU': ('🇪🇺', 'Eurozone'),
+                            'DE': ('🇩🇪', 'Germany'),
+                            'FR': ('🇫🇷', 'France'),
+                            'IT': ('🇮🇹', 'Italy'),
+                            'ES': ('🇪🇸', 'Spain'),
+                            'GB': ('🇬🇧', 'United Kingdom'),
+                            'UK': ('🇬🇧', 'United Kingdom'),
+                            'JP': ('🇯🇵', 'Japan'),
+                            'CN': ('🇨🇳', 'China'),
+                            'CA': ('🇨🇦', 'Canada'),
+                            'AU': ('🇦🇺', 'Australia'),
+                        }
+                        
                         # Group events by date
                         events_by_date = {}
                         for event in filtered_events:
@@ -2692,13 +2767,10 @@ def main():
                                     impact_icon = "🟢"
                                 
                                 country = event.get('country', 'US')
-                                country_flags = {
-                                    'US': '🇺🇸', 'USA': '🇺🇸',
-                                    'EU': '🇪🇺', 'EMU': '🇪🇺', 'DE': '🇩🇪', 'FR': '🇫🇷',
-                                    'GB': '🇬🇧', 'UK': '🇬🇧',
-                                    'JP': '🇯🇵'
-                                }
-                                country_flag = country_flags.get(country, '🌍')
+                                flag, country_name = country_display.get(country, ('🌍', country))
+                                
+                                event_name = event.get('event', 'Unknown Event')
+                                description = get_event_description(event_name)
                                 
                                 with st.container():
                                     col1, col2, col3 = st.columns([1, 3, 2])
@@ -2709,10 +2781,12 @@ def main():
                                             st.markdown(f"**{time_str}** ET")
                                         else:
                                             st.markdown("*Time TBD*")
+                                        st.caption(f"{flag} {country_name}")
                                     
                                     with col2:
-                                        st.markdown(f"{impact_icon} **{event.get('event', 'Unknown Event')}**")
-                                        st.caption(f"{country_flag} {country}")
+                                        st.markdown(f"{impact_icon} **{event_name}**")
+                                        if description:
+                                            st.caption(description)
                                     
                                     with col3:
                                         # Show actual vs estimate if available
