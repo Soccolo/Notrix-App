@@ -39,7 +39,7 @@ except:
 # - FMP: https://site.financialmodelingprep.com/developer/docs (250 calls/day free)
 
 # You can set these as environment variables or enter them in the sidebar
-FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY', '')
+FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY', 'd55ei4hr01qu4ccg9omgd55ei4hr01qu4ccg9on0')
 ALPHA_VANTAGE_API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY', '')
 TWELVE_DATA_API_KEY = os.environ.get('TWELVE_DATA_API_KEY', '')
 FMP_API_KEY = os.environ.get('FMP_API_KEY', '')
@@ -1659,7 +1659,7 @@ def main():
         # API Key inputs
         finnhub_key = st.text_input(
             "Finnhub API Key",
-            value="d55ei4hr01qu4ccg9omgd55ei4hr01qu4ccg9on0",
+            value=FINNHUB_API_KEY,
             type="password",
             help="Get free key at finnhub.io"
         )
@@ -2852,10 +2852,25 @@ def main():
         with cal_tab2:
             st.subheader("Earnings Calendar Lookup")
             
-            # Search for specific stock earnings
-            earnings_symbol = st.text_input("Enter Stock Symbol", value="AAPL", key="earnings_lookup").upper()
+            # Initialize session state for quick lookup
+            if 'quick_stock_selected' not in st.session_state:
+                st.session_state.quick_stock_selected = None
             
-            if st.button("🔍 Get Earnings Info", key="earnings_btn"):
+            # Determine default value
+            default_symbol = st.session_state.quick_stock_selected if st.session_state.quick_stock_selected else "AAPL"
+            
+            # Search for specific stock earnings
+            earnings_symbol = st.text_input("Enter Stock Symbol", value=default_symbol).upper()
+            
+            # Reset quick stock selection after using it
+            if st.session_state.quick_stock_selected:
+                st.session_state.quick_stock_selected = None
+            
+            # Auto-search if a quick stock was selected, or manual search button
+            auto_search = earnings_symbol != "AAPL" and earnings_symbol == default_symbol.upper()
+            manual_search = st.button("🔍 Get Earnings Info", key="earnings_btn")
+            
+            if manual_search or auto_search:
                 if earnings_symbol:
                     with st.spinner(f"Fetching earnings for {earnings_symbol}..."):
                         earnings_data = get_earnings_calendar(earnings_symbol, api_keys)
@@ -2955,7 +2970,7 @@ def main():
             for i, stock in enumerate(popular_stocks):
                 with cols[i % 4]:
                     if st.button(stock, key=f"quick_{stock}"):
-                        st.session_state['earnings_lookup'] = stock
+                        st.session_state.quick_stock_selected = stock
                         st.rerun()
     
     # ============ TAB 4: ECONOMIC NEWS ============
