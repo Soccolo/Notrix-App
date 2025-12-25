@@ -1073,55 +1073,217 @@ def get_earnings_calendar(symbol, api_keys=None):
     
     return earnings_data
 
-def get_economic_calendar(api_keys=None):
-    """Get upcoming economic events"""
+def get_economic_calendar(api_keys=None, countries=None):
+    """Get upcoming economic events from multiple countries"""
     if api_keys is None:
         api_keys = {}
+    if countries is None:
+        countries = ['US', 'EU', 'GB', 'JP']  # Default: US, Eurozone, UK, Japan
     
     events = []
     
     # Try Finnhub Economic Calendar
     if api_keys.get('finnhub'):
         try:
-            today = datetime.now().strftime('%Y-%m-%d')
-            next_week = (datetime.now() + timedelta(days=14)).strftime('%Y-%m-%d')
+            today = datetime.now()
+            # Get events for next 30 days
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=30)).strftime('%Y-%m-%d')
             
-            url = f"https://finnhub.io/api/v1/calendar/economic?from={today}&to={next_week}&token={api_keys['finnhub']}"
-            response = requests.get(url, timeout=10)
+            url = f"https://finnhub.io/api/v1/calendar/economic?from={start_date}&to={end_date}&token={api_keys['finnhub']}"
+            response = requests.get(url, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get('economicCalendar'):
-                    for item in data['economicCalendar'][:30]:
+                    for item in data['economicCalendar']:
+                        country = item.get('country', 'US')
+                        
+                        # Filter by selected countries
+                        # Map country codes (Finnhub uses various formats)
+                        country_map = {
+                            'US': ['US', 'USA', 'United States'],
+                            'EU': ['EU', 'EMU', 'Eurozone', 'Euro Area', 'DE', 'FR', 'IT', 'ES'],
+                            'GB': ['GB', 'UK', 'United Kingdom', 'Britain'],
+                            'JP': ['JP', 'Japan']
+                        }
+                        
+                        country_match = False
+                        for selected in countries:
+                            if country in country_map.get(selected, [selected]):
+                                country_match = True
+                                break
+                        
+                        if not country_match:
+                            continue
+                        
+                        # Parse date and time
+                        event_time = item.get('time', '')
+                        event_date = None
+                        
+                        if event_time:
+                            try:
+                                # Try to parse the datetime
+                                if 'T' in event_time:
+                                    event_date = datetime.fromisoformat(event_time.replace('Z', '+00:00'))
+                                else:
+                                    event_date = datetime.strptime(event_time, '%Y-%m-%d %H:%M:%S')
+                            except:
+                                try:
+                                    event_date = datetime.strptime(event_time[:10], '%Y-%m-%d')
+                                except:
+                                    pass
+                        
                         impact = item.get('impact', 'low')
+                        if isinstance(impact, (int, float)):
+                            # Convert numeric impact to string
+                            if impact >= 3:
+                                impact = 'high'
+                            elif impact >= 2:
+                                impact = 'medium'
+                            else:
+                                impact = 'low'
+                        
                         events.append({
-                            'date': item.get('time', item.get('date')),
-                            'event': item.get('event'),
-                            'country': item.get('country', 'US'),
-                            'impact': impact,
+                            'datetime': event_date,
+                            'date_str': event_date.strftime('%Y-%m-%d') if event_date else event_time[:10] if event_time else 'TBD',
+                            'time_str': event_date.strftime('%H:%M') if event_date and event_date.hour > 0 else '',
+                            'event': item.get('event', 'Unknown Event'),
+                            'country': country,
+                            'impact': impact.lower() if isinstance(impact, str) else 'medium',
                             'actual': item.get('actual'),
                             'estimate': item.get('estimate'),
                             'previous': item.get('prev'),
                             'unit': item.get('unit', ''),
                         })
-                return events, 'Finnhub'
-        except:
+                    
+                    # Sort by date
+                    events.sort(key=lambda x: x['datetime'] if x['datetime'] else datetime.max)
+                    
+                    return events[:50], 'Finnhub'  # Limit to 50 events
+        except Exception as e:
             pass
     
-    # Fallback: Get from RSS feeds or hardcoded major events
-    # This is a simplified fallback - major recurring events
-    try:
-        major_events = [
-            {'event': 'Federal Reserve Interest Rate Decision', 'impact': 'high', 'country': 'US', 'recurring': 'Monthly'},
-            {'event': 'Non-Farm Payrolls', 'impact': 'high', 'country': 'US', 'recurring': 'First Friday of month'},
-            {'event': 'CPI Inflation Data', 'impact': 'high', 'country': 'US', 'recurring': 'Monthly'},
-            {'event': 'GDP Growth Rate', 'impact': 'high', 'country': 'US', 'recurring': 'Quarterly'},
-            {'event': 'Unemployment Rate', 'impact': 'medium', 'country': 'US', 'recurring': 'Monthly'},
-            {'event': 'Retail Sales', 'impact': 'medium', 'country': 'US', 'recurring': 'Monthly'},
-        ]
-        return major_events, 'Reference (add Finnhub API for live data)'
-    except:
-        return [], None
+    # Fallback: Provide reference schedule with approximate dates
+    # This gives users useful info even without API
+    today = datetime.now()
+    
+    # Calculate approximate dates for recurring events
+    def next_weekday(d, weekday):
+        """Get next occurrence of a weekday (0=Monday, 6=Sunday)"""
+        days_ahead = weekday - d.weekday()
+        if days_ahead <= 0:
+            days_ahead += 7
+        return d + timedelta(days_ahead)
+    
+    def first_friday_of_month(year, month):
+        """Get first Friday of a month"""
+        first_day = datetime(year, month, 1)
+        first_friday = first_day + timedelta(days=(4 - first_day.weekday() + 7) % 7)
+        return first_friday
+    
+    # Get next month for some events
+    next_month = today.month + 1 if today.month < 12 else 1
+    next_month_year = today.year if today.month < 12 else today.year + 1
+    
+    reference_events = []
+    
+    # US Events
+    if 'US' in countries:
+        # Non-Farm Payrolls - First Friday of next month
+        nfp_date = first_friday_of_month(next_month_year, next_month)
+        if nfp_date < today:
+            nfp_date = first_friday_of_month(
+                next_month_year if next_month < 12 else next_month_year + 1,
+                next_month + 1 if next_month < 12 else 1
+            )
+        
+        reference_events.extend([
+            {'datetime': nfp_date, 'date_str': nfp_date.strftime('%Y-%m-%d'), 'time_str': '08:30',
+             'event': 'Non-Farm Payrolls', 'country': 'US', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': 'K'},
+            
+            {'datetime': nfp_date, 'date_str': nfp_date.strftime('%Y-%m-%d'), 'time_str': '08:30',
+             'event': 'Unemployment Rate', 'country': 'US', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=10), 'date_str': (today + timedelta(days=10)).strftime('%Y-%m-%d'), 'time_str': '08:30',
+             'event': 'CPI Inflation (Monthly)', 'country': 'US', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=15), 'date_str': (today + timedelta(days=15)).strftime('%Y-%m-%d'), 'time_str': '08:30',
+             'event': 'Retail Sales', 'country': 'US', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': next_weekday(today, 3), 'date_str': next_weekday(today, 3).strftime('%Y-%m-%d'), 'time_str': '08:30',
+             'event': 'Initial Jobless Claims', 'country': 'US', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': 'K'},
+        ])
+    
+    # Eurozone Events
+    if 'EU' in countries:
+        reference_events.extend([
+            {'datetime': today + timedelta(days=5), 'date_str': (today + timedelta(days=5)).strftime('%Y-%m-%d'), 'time_str': '10:00',
+             'event': 'ECB Interest Rate Decision', 'country': 'EU', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=12), 'date_str': (today + timedelta(days=12)).strftime('%Y-%m-%d'), 'time_str': '10:00',
+             'event': 'Eurozone CPI (Flash)', 'country': 'EU', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=8), 'date_str': (today + timedelta(days=8)).strftime('%Y-%m-%d'), 'time_str': '10:00',
+             'event': 'German ZEW Economic Sentiment', 'country': 'EU', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': ''},
+            
+            {'datetime': today + timedelta(days=20), 'date_str': (today + timedelta(days=20)).strftime('%Y-%m-%d'), 'time_str': '09:00',
+             'event': 'Eurozone GDP (Quarterly)', 'country': 'EU', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+        ])
+    
+    # UK Events
+    if 'GB' in countries:
+        reference_events.extend([
+            {'datetime': today + timedelta(days=7), 'date_str': (today + timedelta(days=7)).strftime('%Y-%m-%d'), 'time_str': '12:00',
+             'event': 'BoE Interest Rate Decision', 'country': 'GB', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=14), 'date_str': (today + timedelta(days=14)).strftime('%Y-%m-%d'), 'time_str': '07:00',
+             'event': 'UK CPI Inflation', 'country': 'GB', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=18), 'date_str': (today + timedelta(days=18)).strftime('%Y-%m-%d'), 'time_str': '07:00',
+             'event': 'UK GDP (Monthly)', 'country': 'GB', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=11), 'date_str': (today + timedelta(days=11)).strftime('%Y-%m-%d'), 'time_str': '07:00',
+             'event': 'UK Employment Data', 'country': 'GB', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': 'K'},
+        ])
+    
+    # Japan Events
+    if 'JP' in countries:
+        reference_events.extend([
+            {'datetime': today + timedelta(days=6), 'date_str': (today + timedelta(days=6)).strftime('%Y-%m-%d'), 'time_str': '03:00',
+             'event': 'BoJ Interest Rate Decision', 'country': 'JP', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=16), 'date_str': (today + timedelta(days=16)).strftime('%Y-%m-%d'), 'time_str': '23:30',
+             'event': 'Japan CPI Inflation', 'country': 'JP', 'impact': 'high',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=22), 'date_str': (today + timedelta(days=22)).strftime('%Y-%m-%d'), 'time_str': '23:50',
+             'event': 'Japan GDP (Quarterly)', 'country': 'JP', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': '%'},
+            
+            {'datetime': today + timedelta(days=9), 'date_str': (today + timedelta(days=9)).strftime('%Y-%m-%d'), 'time_str': '00:30',
+             'event': 'Japan Tankan Manufacturing Index', 'country': 'JP', 'impact': 'medium',
+             'actual': None, 'estimate': None, 'previous': None, 'unit': ''},
+        ])
+    
+    # Sort by date
+    reference_events.sort(key=lambda x: x['datetime'] if x['datetime'] else datetime.max)
+    
+    return reference_events, 'Reference Schedule (add Finnhub API for live data)'
 
 def analyze_sentiment(text):
     """Analyze sentiment of text using TextBlob"""
@@ -2451,91 +2613,165 @@ def main():
         with cal_tab1:
             st.subheader("Upcoming Economic Events")
             
-            if not api_keys.get('finnhub'):
-                st.warning("⚠️ Add a Finnhub API key in the sidebar to see live economic events")
+            # Filters row
+            filter_col1, filter_col2 = st.columns(2)
             
-            with st.spinner("Fetching economic calendar..."):
-                events, events_source = get_economic_calendar(api_keys)
+            with filter_col1:
+                # Country filter
+                country_options = {
+                    'US': '🇺🇸 United States',
+                    'EU': '🇪🇺 Eurozone',
+                    'GB': '🇬🇧 United Kingdom',
+                    'JP': '🇯🇵 Japan'
+                }
+                selected_countries = st.multiselect(
+                    "Select Regions",
+                    options=list(country_options.keys()),
+                    default=['US', 'EU', 'GB', 'JP'],
+                    format_func=lambda x: country_options[x]
+                )
             
-            if events:
-                if events_source:
-                    st.caption(f"📡 Data source: {events_source}")
-                
-                # Filter by impact
+            with filter_col2:
+                # Impact filter
                 impact_filter = st.multiselect(
                     "Filter by Impact",
                     options=['high', 'medium', 'low'],
                     default=['high', 'medium']
                 )
+            
+            if not api_keys.get('finnhub'):
+                st.info("💡 Add a Finnhub API key in the sidebar for live economic data with exact dates and times")
+            
+            if selected_countries:
+                with st.spinner("Fetching economic calendar..."):
+                    events, events_source = get_economic_calendar(api_keys, selected_countries)
                 
-                # Filter events
-                if events_source == 'Finnhub':
+                if events:
+                    st.caption(f"📡 Data source: {events_source}")
+                    
+                    # Filter events by impact
                     filtered_events = [e for e in events if e.get('impact', 'low').lower() in impact_filter]
-                else:
-                    filtered_events = events
-                
-                if filtered_events:
-                    for event in filtered_events:
-                        impact = event.get('impact', 'medium').lower()
-                        if impact == 'high':
-                            impact_icon = "🔴"
-                        elif impact == 'medium':
-                            impact_icon = "🟡"
-                        else:
-                            impact_icon = "🟢"
+                    
+                    if filtered_events:
+                        # Group events by date
+                        events_by_date = {}
+                        for event in filtered_events:
+                            date_key = event.get('date_str', 'Unknown')
+                            if date_key not in events_by_date:
+                                events_by_date[date_key] = []
+                            events_by_date[date_key].append(event)
                         
-                        country = event.get('country', 'US')
-                        country_flag = '🇺🇸' if country == 'US' else '🌍'
-                        
-                        with st.container():
-                            col1, col2 = st.columns([3, 1])
-                            
-                            with col1:
-                                st.markdown(f"**{impact_icon} {event.get('event', 'Unknown Event')}**")
+                        # Display events grouped by date
+                        for date_str, date_events in events_by_date.items():
+                            # Parse date for better display
+                            try:
+                                date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                                day_name = date_obj.strftime('%A')
+                                formatted_date = date_obj.strftime('%B %d, %Y')
                                 
-                                date_str = event.get('date', '')
-                                if date_str:
-                                    st.caption(f"{country_flag} {country} | {date_str}")
-                                
-                                # Show actual vs estimate if available
-                                actual = event.get('actual')
-                                estimate = event.get('estimate')
-                                previous = event.get('previous')
-                                
-                                if actual is not None or estimate is not None or previous is not None:
-                                    metrics = []
-                                    if previous is not None:
-                                        metrics.append(f"Previous: {previous}")
-                                    if estimate is not None:
-                                        metrics.append(f"Forecast: {estimate}")
-                                    if actual is not None:
-                                        metrics.append(f"**Actual: {actual}**")
-                                    st.write(" | ".join(metrics))
+                                # Check if today/tomorrow
+                                today = datetime.now().date()
+                                if date_obj.date() == today:
+                                    date_header = f"📍 **TODAY** - {formatted_date}"
+                                elif date_obj.date() == today + timedelta(days=1):
+                                    date_header = f"📍 **TOMORROW** - {formatted_date}"
+                                else:
+                                    date_header = f"**{day_name}, {formatted_date}**"
+                            except:
+                                date_header = f"**{date_str}**"
                             
-                            with col2:
-                                recurring = event.get('recurring')
-                                if recurring:
-                                    st.caption(recurring)
+                            st.markdown(f"### {date_header}")
                             
-                            st.divider()
+                            for event in date_events:
+                                impact = event.get('impact', 'medium').lower()
+                                if impact == 'high':
+                                    impact_icon = "🔴"
+                                elif impact == 'medium':
+                                    impact_icon = "🟡"
+                                else:
+                                    impact_icon = "🟢"
+                                
+                                country = event.get('country', 'US')
+                                country_flags = {
+                                    'US': '🇺🇸', 'USA': '🇺🇸',
+                                    'EU': '🇪🇺', 'EMU': '🇪🇺', 'DE': '🇩🇪', 'FR': '🇫🇷',
+                                    'GB': '🇬🇧', 'UK': '🇬🇧',
+                                    'JP': '🇯🇵'
+                                }
+                                country_flag = country_flags.get(country, '🌍')
+                                
+                                with st.container():
+                                    col1, col2, col3 = st.columns([1, 3, 2])
+                                    
+                                    with col1:
+                                        time_str = event.get('time_str', '')
+                                        if time_str:
+                                            st.markdown(f"**{time_str}** ET")
+                                        else:
+                                            st.markdown("*Time TBD*")
+                                    
+                                    with col2:
+                                        st.markdown(f"{impact_icon} **{event.get('event', 'Unknown Event')}**")
+                                        st.caption(f"{country_flag} {country}")
+                                    
+                                    with col3:
+                                        # Show actual vs estimate if available
+                                        actual = event.get('actual')
+                                        estimate = event.get('estimate')
+                                        previous = event.get('previous')
+                                        unit = event.get('unit', '')
+                                        
+                                        if actual is not None:
+                                            st.metric("Actual", f"{actual}{unit}", 
+                                                     delta=f"vs est. {estimate}{unit}" if estimate else None)
+                                        elif estimate is not None:
+                                            st.metric("Forecast", f"{estimate}{unit}",
+                                                     delta=f"prev. {previous}{unit}" if previous else None)
+                                        elif previous is not None:
+                                            st.metric("Previous", f"{previous}{unit}")
+                                
+                                st.divider()
+                    else:
+                        st.info("No events matching your filters")
                 else:
-                    st.info("No events matching your filter")
+                    st.warning("Could not fetch economic events")
             else:
-                st.info("No economic events found. Add a Finnhub API key for live data.")
+                st.warning("Please select at least one region")
             
             # Key dates reference
-            with st.expander("📋 Key Recurring Economic Events"):
+            with st.expander("📋 Key Recurring Economic Events Reference"):
                 st.markdown("""
+                ### 🇺🇸 United States
                 | Event | Typical Release | Impact |
                 |-------|-----------------|--------|
                 | **Fed Interest Rate Decision** | 8x/year (FOMC meetings) | 🔴 High |
-                | **Non-Farm Payrolls** | First Friday of month | 🔴 High |
-                | **CPI (Inflation)** | ~10th-15th of month | 🔴 High |
+                | **Non-Farm Payrolls** | First Friday of month, 8:30 AM ET | 🔴 High |
+                | **CPI (Inflation)** | ~10th-15th of month, 8:30 AM ET | 🔴 High |
                 | **GDP Growth** | Quarterly | 🔴 High |
                 | **Retail Sales** | ~15th of month | 🟡 Medium |
-                | **Unemployment Claims** | Weekly (Thursday) | 🟡 Medium |
-                | **ISM Manufacturing PMI** | First business day of month | 🟡 Medium |
-                | **Consumer Confidence** | Last Tuesday of month | 🟡 Medium |
+                | **Initial Jobless Claims** | Weekly (Thursday), 8:30 AM ET | 🟡 Medium |
+                
+                ### 🇪🇺 Eurozone
+                | Event | Typical Release | Impact |
+                |-------|-----------------|--------|
+                | **ECB Interest Rate Decision** | 8x/year | 🔴 High |
+                | **Eurozone CPI** | End of month | 🔴 High |
+                | **German ZEW Sentiment** | 2nd-3rd Tuesday of month | 🟡 Medium |
+                | **Eurozone GDP** | Quarterly | 🔴 High |
+                
+                ### 🇬🇧 United Kingdom
+                | Event | Typical Release | Impact |
+                |-------|-----------------|--------|
+                | **BoE Interest Rate Decision** | 8x/year | 🔴 High |
+                | **UK CPI Inflation** | ~15th of month | 🔴 High |
+                | **UK GDP** | Monthly & Quarterly | 🟡 Medium |
+                
+                ### 🇯🇵 Japan
+                | Event | Typical Release | Impact |
+                |-------|-----------------|--------|
+                | **BoJ Interest Rate Decision** | 8x/year | 🔴 High |
+                | **Japan CPI** | 3rd Friday of month | 🔴 High |
+                | **Tankan Survey** | Quarterly | 🟡 Medium |
                 """)
         
         # Earnings Calendar Tab
