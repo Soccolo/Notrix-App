@@ -1285,6 +1285,232 @@ def get_economic_calendar(api_keys=None, countries=None):
     
     return reference_events, 'Reference Schedule (add Finnhub API for live data)'
 
+
+# ============ INSURANCE COMPANY TRACKER ============
+
+def get_insurance_company_data():
+    """
+    Get data for major UK and Lloyd's market insurers
+    Tickers: Aviva, Admiral, Direct Line, Legal & General, Hiscox, Beazley, Lancashire
+    """
+    
+    # UK Insurance Company tickers
+    uk_insurers = {
+        'AV.L': {'name': 'Aviva', 'type': 'Composite', 'market': 'FTSE 100'},
+        'ADM.L': {'name': 'Admiral Group', 'type': 'Personal Lines', 'market': 'FTSE 100'},
+        'DLG.L': {'name': 'Direct Line', 'type': 'Personal Lines', 'market': 'FTSE 250'},
+        'LGEN.L': {'name': 'Legal & General', 'type': 'Life & Pensions', 'market': 'FTSE 100'},
+        'HSX.L': {'name': 'Hiscox', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 250'},
+        'BEZ.L': {'name': 'Beazley', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 100'},
+        'LRE.L': {'name': 'Lancashire Holdings', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 250'},
+        'PRU.L': {'name': 'Prudential', 'type': 'Life & Pensions', 'market': 'FTSE 100'},
+    }
+    
+    # US/Global brokers for comparison
+    global_brokers = {
+        'AON': {'name': 'Aon', 'type': 'Broker', 'market': 'NYSE'},
+        'MMC': {'name': 'Marsh McLennan', 'type': 'Broker', 'market': 'NYSE'},
+        'WTW': {'name': 'Willis Towers Watson', 'type': 'Broker', 'market': 'NASDAQ'},
+        'AJG': {'name': 'Arthur J. Gallagher', 'type': 'Broker', 'market': 'NYSE'},
+    }
+    
+    results = {'uk_insurers': [], 'global_brokers': []}
+    
+    import io
+    import sys
+    
+    # Fetch UK insurers
+    for ticker, info in uk_insurers.items():
+        try:
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = io.StringIO()
+            sys.stderr = io.StringIO()
+            
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='5d')
+            stock_info = stock.info
+            
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            
+            if not hist.empty:
+                current_price = hist['Close'].iloc[-1]
+                prev_price = hist['Close'].iloc[0] if len(hist) > 1 else current_price
+                change_pct = ((current_price - prev_price) / prev_price) * 100
+                
+                # Get additional metrics
+                pe_ratio = stock_info.get('trailingPE')
+                dividend_yield = stock_info.get('dividendYield')
+                market_cap = stock_info.get('marketCap')
+                
+                results['uk_insurers'].append({
+                    'ticker': ticker,
+                    'name': info['name'],
+                    'type': info['type'],
+                    'market': info['market'],
+                    'price': current_price,
+                    'change_pct': change_pct,
+                    'pe_ratio': pe_ratio,
+                    'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
+                    'market_cap': market_cap,
+                    'currency': 'GBP'
+                })
+        except Exception as e:
+            pass
+    
+    # Fetch global brokers
+    for ticker, info in global_brokers.items():
+        try:
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = io.StringIO()
+            sys.stderr = io.StringIO()
+            
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='5d')
+            stock_info = stock.info
+            
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            
+            if not hist.empty:
+                current_price = hist['Close'].iloc[-1]
+                prev_price = hist['Close'].iloc[0] if len(hist) > 1 else current_price
+                change_pct = ((current_price - prev_price) / prev_price) * 100
+                
+                pe_ratio = stock_info.get('trailingPE')
+                dividend_yield = stock_info.get('dividendYield')
+                market_cap = stock_info.get('marketCap')
+                
+                results['global_brokers'].append({
+                    'ticker': ticker,
+                    'name': info['name'],
+                    'type': info['type'],
+                    'market': info['market'],
+                    'price': current_price,
+                    'change_pct': change_pct,
+                    'pe_ratio': pe_ratio,
+                    'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
+                    'market_cap': market_cap,
+                    'currency': 'USD'
+                })
+        except Exception as e:
+            pass
+    
+    return results
+
+
+def get_market_rates_data():
+    """
+    Return latest insurance market rate data from broker reports
+    Sources: Marsh Global Insurance Market Index, Aon, WTW
+    Data as of Q4 2024 / Q1 2025
+    """
+    
+    market_rates = {
+        'last_updated': 'Q4 2024 / Q1 2025',
+        'sources': ['Marsh Global Insurance Market Index', 'Aon UK Market Insights', 'WTW FINEX'],
+        
+        'global_composite': {
+            'rate': -2.0,
+            'trend': 'decreasing',
+            'note': 'Second consecutive quarterly decrease after 7 years of increases'
+        },
+        
+        'lines_of_business': {
+            'cyber': {
+                'global_rate': -7.0,
+                'uk_rate': -7.0,
+                'us_rate': -5.0,
+                'trend': 'decreasing',
+                'market_condition': 'Soft - Buyer Friendly',
+                'capacity': 'Abundant',
+                'notes': 'Stabilized rates after significant increases in 2021-2022. Strong cybersecurity controls can achieve better rates. Claims volume increased in 2024 with ransomware and privacy breaches.',
+                'source': 'Marsh Q4 2024'
+            },
+            'directors_officers': {
+                'global_rate': -5.0,
+                'uk_rate': -10.0,  # Range: -5% to -15%
+                'us_rate': -5.0,
+                'trend': 'decreasing',
+                'market_condition': 'Soft - Buyer Friendly',
+                'capacity': 'Abundant',
+                'notes': 'UK D&O rates down 10-15% in 2024. 81% of UK clients saw premium decreases. Pricing stabilized with single-digit decreases becoming more common.',
+                'source': 'Aon/WTW Q4 2024'
+            },
+            'professional_indemnity': {
+                'global_rate': -7.5,
+                'uk_rate': -10.0,  # Range: -5% to -15%
+                'us_rate': -1.0,  # E&O +1%
+                'trend': 'decreasing',
+                'market_condition': 'Soft - Competitive',
+                'capacity': 'Increased',
+                'notes': 'London market PI rates decreased 5-10% in 2024, correcting 2019-2022 hard market increases. New capacity entering market. Competitive environment expected to continue in 2025.',
+                'source': 'WTW Feb 2025'
+            },
+            'financial_institutions': {
+                'global_rate': -6.0,
+                'uk_rate': -8.0,
+                'us_rate': -2.0,
+                'trend': 'decreasing',
+                'market_condition': 'Soft',
+                'capacity': 'Adequate',
+                'notes': 'FI rates moderated with decreases ranging 5-10%. Limited capital markets activity restricted new business opportunities.',
+                'source': 'Marsh Q4 2024'
+            },
+            'property': {
+                'global_rate': -3.0,
+                'uk_rate': -4.0,
+                'us_rate': -4.0,
+                'trend': 'decreasing',
+                'market_condition': 'Moderate - Improving',
+                'capacity': 'Strong',
+                'notes': 'Increased insurer capacity and competition. Strong financial performance over past 3 years. Nat cat exposed risks still face scrutiny.',
+                'source': 'Marsh Q4 2024'
+            },
+            'casualty_liability': {
+                'global_rate': 4.0,
+                'uk_rate': -6.0,  # Excluding motor
+                'us_rate': 7.0,
+                'trend': 'increasing (US), decreasing (UK)',
+                'market_condition': 'Mixed',
+                'capacity': 'Constrained for US exposure',
+                'notes': 'US casualty rates up 7% due to social inflation and litigation trends. UK casualty (ex-motor) down 6%. US exposed risks face continued pressure.',
+                'source': 'Marsh Q4 2024'
+            },
+            'motor': {
+                'global_rate': 5.0,
+                'uk_rate': 7.0,
+                'us_rate': 5.0,
+                'trend': 'increasing',
+                'market_condition': 'Hard',
+                'capacity': 'Constrained',
+                'notes': 'UK motor market improving after worst performance in a decade in 2023. Care inflation reached 25% due to provider shortages.',
+                'source': 'Marsh Q1 2025'
+            },
+            'business_travel': {
+                'global_rate': 0.0,  # Stable
+                'uk_rate': 0.0,
+                'us_rate': 0.0,
+                'trend': 'stable',
+                'market_condition': 'Stable - Growth Focus',
+                'capacity': 'Adequate',
+                'notes': 'Market valued at ~$5.7B in 2024, growing at 5-8% CAGR. Focus on digital platforms and comprehensive coverage. Post-pandemic demand recovery.',
+                'source': 'Industry Reports 2024'
+            }
+        },
+        
+        'regional_summary': {
+            'UK': {'overall_rate': -5.0, 'trend': 'Softening', 'outlook': 'Buyer-friendly conditions expected to continue'},
+            'US': {'overall_rate': 0.0, 'trend': 'Flat', 'outlook': 'Casualty pressure, property improving'},
+            'Europe': {'overall_rate': -2.0, 'trend': 'Softening', 'outlook': 'Moderate conditions'},
+            'Asia_Pacific': {'overall_rate': -8.0, 'trend': 'Softening', 'outlook': 'Led global declines'},
+        }
+    }
+    
+    return market_rates
+
 def analyze_sentiment(text):
     """Analyze sentiment of text using TextBlob"""
     try:
@@ -1832,10 +2058,11 @@ def main():
     st.divider()
     
     # Main tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📈 Stock Research", 
         "🧮 Portfolio Calculator", 
         "📅 Economic Calendar",
+        "🏛️ Insurance Tracker",
         "📰 Economic News",
         "🏢 Insurance News"
     ])
@@ -2973,8 +3200,261 @@ def main():
                         st.session_state.quick_stock_selected = stock
                         st.rerun()
     
-    # ============ TAB 4: ECONOMIC NEWS ============
+    # ============ TAB 4: INSURANCE TRACKER ============
     with tab4:
+        st.header("🏛️ Insurance Industry Tracker")
+        
+        ins_tab1, ins_tab2 = st.tabs(["📊 Market Rates", "🏢 Insurance Companies"])
+        
+        # Market Rates Tab
+        with ins_tab1:
+            st.subheader("Insurance Market Rates by Line of Business")
+            st.caption("Data sourced from Marsh Global Insurance Market Index, Aon, WTW | Q4 2024 / Q1 2025")
+            
+            market_rates = get_market_rates_data()
+            
+            # Summary Cards
+            st.markdown("### 🌍 Global Market Overview")
+            
+            summary_cols = st.columns(4)
+            with summary_cols[0]:
+                global_rate = market_rates['global_composite']['rate']
+                st.metric(
+                    "Global Composite",
+                    f"{global_rate:+.1f}%",
+                    delta="Decreasing" if global_rate < 0 else "Increasing",
+                    delta_color="normal" if global_rate < 0 else "inverse"
+                )
+            
+            for i, (region, data) in enumerate(list(market_rates['regional_summary'].items())[:3]):
+                with summary_cols[i+1]:
+                    rate = data['overall_rate']
+                    st.metric(
+                        region.replace('_', ' '),
+                        f"{rate:+.1f}%",
+                        delta=data['trend']
+                    )
+            
+            st.markdown("---")
+            
+            # Detailed Line of Business Rates
+            st.markdown("### 📋 Rate Changes by Line of Business")
+            
+            # Filter for key lines
+            key_lines = ['cyber', 'directors_officers', 'professional_indemnity', 'financial_institutions', 'business_travel', 'property', 'casualty_liability', 'motor']
+            
+            line_display_names = {
+                'cyber': '🔐 Cyber',
+                'directors_officers': '👔 D&O (Directors & Officers)',
+                'professional_indemnity': '📜 Professional Indemnity (PI)',
+                'financial_institutions': '🏦 Financial Institutions',
+                'business_travel': '✈️ Business Travel',
+                'property': '🏢 Property',
+                'casualty_liability': '⚖️ Casualty / Liability',
+                'motor': '🚗 Motor'
+            }
+            
+            for line_key in key_lines:
+                if line_key in market_rates['lines_of_business']:
+                    line_data = market_rates['lines_of_business'][line_key]
+                    display_name = line_display_names.get(line_key, line_key)
+                    
+                    with st.expander(f"{display_name} | Global: **{line_data['global_rate']:+.1f}%** | UK: **{line_data['uk_rate']:+.1f}%**", expanded=(line_key in ['cyber', 'directors_officers', 'professional_indemnity', 'business_travel'])):
+                        
+                        rate_cols = st.columns(4)
+                        
+                        with rate_cols[0]:
+                            global_rate = line_data['global_rate']
+                            color = "normal" if global_rate <= 0 else "inverse"
+                            st.metric("Global Rate", f"{global_rate:+.1f}%")
+                        
+                        with rate_cols[1]:
+                            uk_rate = line_data['uk_rate']
+                            st.metric("UK Rate", f"{uk_rate:+.1f}%")
+                        
+                        with rate_cols[2]:
+                            us_rate = line_data['us_rate']
+                            st.metric("US Rate", f"{us_rate:+.1f}%")
+                        
+                        with rate_cols[3]:
+                            condition = line_data['market_condition']
+                            if 'soft' in condition.lower() or 'buyer' in condition.lower():
+                                condition_icon = "🟢"
+                            elif 'hard' in condition.lower():
+                                condition_icon = "🔴"
+                            else:
+                                condition_icon = "🟡"
+                            st.metric("Market", f"{condition_icon} {condition}")
+                        
+                        # Additional details
+                        detail_cols = st.columns(2)
+                        with detail_cols[0]:
+                            st.markdown(f"**Capacity:** {line_data['capacity']}")
+                            st.markdown(f"**Trend:** {line_data['trend'].title()}")
+                        
+                        with detail_cols[1]:
+                            st.markdown(f"**Source:** {line_data['source']}")
+                        
+                        st.markdown(f"**Notes:** {line_data['notes']}")
+            
+            # Key Insights
+            st.markdown("---")
+            st.markdown("### 💡 Key Market Insights (Q4 2024 / Q1 2025)")
+            
+            insights_col1, insights_col2 = st.columns(2)
+            
+            with insights_col1:
+                st.markdown("""
+                **🔐 Cyber Insurance**
+                - Rates decreased 5-7% globally
+                - Abundant capacity for primary and excess
+                - Strong cybersecurity controls achieve better rates
+                - Claims volume increasing (ransomware, privacy)
+                - 20% of US clients increased limits in 2024
+                
+                **👔 D&O (Directors & Officers)**
+                - UK rates down 10-15% in 2024
+                - 81% of UK clients saw premium decreases
+                - Buyer-friendly conditions expected to continue
+                - Insurers monitoring AI and ESG exposures
+                """)
+            
+            with insights_col2:
+                st.markdown("""
+                **📜 Professional Indemnity**
+                - London market rates down 5-10%
+                - Correction from 2019-2022 hard market
+                - New capacity entering market
+                - Competitive environment in 2025
+                
+                **✈️ Business Travel**
+                - Market stable, growing at 5-8% CAGR
+                - Market size ~$5.7B in 2024
+                - Focus on digital platforms
+                - Post-pandemic demand recovery
+                """)
+            
+            # Source Attribution
+            st.markdown("---")
+            st.caption("**Data Sources:** " + ", ".join(market_rates['sources']))
+            st.caption("*Note: Rate changes shown are average market movements. Individual risk profiles may vary significantly.*")
+        
+        # Insurance Companies Tab
+        with ins_tab2:
+            st.subheader("UK Insurers & Global Brokers")
+            
+            if st.button("🔄 Refresh Data", key="refresh_insurance"):
+                st.cache_data.clear()
+            
+            with st.spinner("Fetching insurance company data..."):
+                insurance_data = get_insurance_company_data()
+            
+            # UK Insurers
+            st.markdown("### 🇬🇧 UK Insurance Companies")
+            
+            if insurance_data['uk_insurers']:
+                # Create DataFrame for display
+                uk_df = pd.DataFrame(insurance_data['uk_insurers'])
+                
+                # Display as metrics
+                cols = st.columns(4)
+                for i, company in enumerate(insurance_data['uk_insurers']):
+                    with cols[i % 4]:
+                        change = company['change_pct']
+                        price = company['price']
+                        
+                        st.metric(
+                            label=f"{company['name']} ({company['ticker'].replace('.L', '')})",
+                            value=f"£{price:.2f}",
+                            delta=f"{change:+.2f}%"
+                        )
+                        
+                        # Show additional info
+                        pe = company.get('pe_ratio')
+                        div_yield = company.get('dividend_yield')
+                        
+                        info_parts = []
+                        if pe:
+                            info_parts.append(f"P/E: {pe:.1f}")
+                        if div_yield:
+                            info_parts.append(f"Yield: {div_yield:.1f}%")
+                        
+                        if info_parts:
+                            st.caption(" | ".join(info_parts))
+                        st.caption(f"*{company['type']}*")
+                
+                # Table view
+                with st.expander("📊 View Full Table"):
+                    display_df = uk_df[['name', 'ticker', 'type', 'market', 'price', 'change_pct', 'pe_ratio', 'dividend_yield']].copy()
+                    display_df.columns = ['Company', 'Ticker', 'Type', 'Index', 'Price (£)', 'Change %', 'P/E', 'Div Yield %']
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Could not fetch UK insurer data. Markets may be closed.")
+            
+            st.markdown("---")
+            
+            # Global Brokers
+            st.markdown("### 🌍 Global Insurance Brokers")
+            
+            if insurance_data['global_brokers']:
+                cols = st.columns(4)
+                for i, company in enumerate(insurance_data['global_brokers']):
+                    with cols[i % 4]:
+                        change = company['change_pct']
+                        price = company['price']
+                        
+                        st.metric(
+                            label=f"{company['name']} ({company['ticker']})",
+                            value=f"${price:.2f}",
+                            delta=f"{change:+.2f}%"
+                        )
+                        
+                        pe = company.get('pe_ratio')
+                        div_yield = company.get('dividend_yield')
+                        
+                        info_parts = []
+                        if pe:
+                            info_parts.append(f"P/E: {pe:.1f}")
+                        if div_yield:
+                            info_parts.append(f"Yield: {div_yield:.1f}%")
+                        
+                        if info_parts:
+                            st.caption(" | ".join(info_parts))
+            else:
+                st.warning("Could not fetch broker data. Markets may be closed.")
+            
+            # Lloyd's Market Info
+            st.markdown("---")
+            st.markdown("### 🏛️ Lloyd's of London Market")
+            
+            st.info("""
+            **Lloyd's Market Overview:**
+            
+            Lloyd's of London is the world's leading insurance and reinsurance marketplace. 
+            Key specialty insurers trading at Lloyd's include:
+            
+            - **Hiscox** (HSX.L) - Specialty insurance, cyber, kidnap & ransom
+            - **Beazley** (BEZ.L) - Cyber, professional liability, property
+            - **Lancashire** (LRE.L) - Property catastrophe, marine, energy
+            
+            Lloyd's reported **£52.3bn** gross written premium in 2023 with a combined ratio of **83.7%**.
+            """)
+            
+            # Key metrics reference
+            with st.expander("📖 Key Insurance Metrics Explained"):
+                st.markdown("""
+                | Metric | Description | Good Value |
+                |--------|-------------|------------|
+                | **P/E Ratio** | Price to Earnings - valuation measure | 8-15 for insurers |
+                | **Dividend Yield** | Annual dividend / share price | 3-6% typical |
+                | **Combined Ratio** | (Claims + Expenses) / Premiums | <100% = profit |
+                | **Loss Ratio** | Claims / Premiums | <60% = good |
+                | **ROE** | Return on Equity | >10% = good |
+                | **Solvency Ratio** | Capital / Required Capital | >150% = strong |
+                """)
+    
+    # ============ TAB 5: ECONOMIC NEWS ============
+    with tab5:
         st.header("📰 Economic & Market News")
         
         if st.button("🔄 Refresh News", key="refresh_econ"):
@@ -3007,8 +3487,8 @@ def main():
         else:
             st.info("Unable to fetch economic news at this time. Please try again later.")
     
-    # ============ TAB 5: INSURANCE NEWS ============
-    with tab5:
+    # ============ TAB 6: INSURANCE NEWS ============
+    with tab6:
         st.header("🏢 Insurance Industry News")
         
         if st.button("🔄 Refresh News", key="refresh_insurance"):
