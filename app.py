@@ -653,6 +653,476 @@ def get_stock_news_multi_source(symbol, api_keys=None):
     
     return [], None
 
+# ============ FUNDAMENTAL ANALYSIS FUNCTIONS ============
+
+def get_fundamental_data(symbol, api_keys=None):
+    """Fetch comprehensive fundamental data for a stock"""
+    if api_keys is None:
+        api_keys = {}
+    
+    fundamentals = {
+        'valuation': {},
+        'profitability': {},
+        'financial_health': {},
+        'growth': {},
+        'dividends': {},
+        'analyst': {},
+        'source': None
+    }
+    
+    try:
+        import io
+        import sys
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+        if info:
+            # Valuation Metrics
+            fundamentals['valuation'] = {
+                'market_cap': info.get('marketCap'),
+                'enterprise_value': info.get('enterpriseValue'),
+                'pe_ratio': info.get('trailingPE'),
+                'forward_pe': info.get('forwardPE'),
+                'peg_ratio': info.get('pegRatio'),
+                'price_to_book': info.get('priceToBook'),
+                'price_to_sales': info.get('priceToSalesTrailing12Months'),
+                'ev_to_revenue': info.get('enterpriseToRevenue'),
+                'ev_to_ebitda': info.get('enterpriseToEbitda'),
+            }
+            
+            # Profitability Metrics
+            fundamentals['profitability'] = {
+                'profit_margin': info.get('profitMargins'),
+                'operating_margin': info.get('operatingMargins'),
+                'gross_margin': info.get('grossMargins'),
+                'ebitda_margin': info.get('ebitdaMargins'),
+                'return_on_assets': info.get('returnOnAssets'),
+                'return_on_equity': info.get('returnOnEquity'),
+                'revenue': info.get('totalRevenue'),
+                'net_income': info.get('netIncomeToCommon'),
+                'eps': info.get('trailingEps'),
+                'forward_eps': info.get('forwardEps'),
+            }
+            
+            # Financial Health
+            fundamentals['financial_health'] = {
+                'total_cash': info.get('totalCash'),
+                'total_debt': info.get('totalDebt'),
+                'debt_to_equity': info.get('debtToEquity'),
+                'current_ratio': info.get('currentRatio'),
+                'quick_ratio': info.get('quickRatio'),
+                'free_cash_flow': info.get('freeCashflow'),
+                'operating_cash_flow': info.get('operatingCashflow'),
+            }
+            
+            # Growth Metrics
+            fundamentals['growth'] = {
+                'revenue_growth': info.get('revenueGrowth'),
+                'earnings_growth': info.get('earningsGrowth'),
+                'earnings_quarterly_growth': info.get('earningsQuarterlyGrowth'),
+                'revenue_per_share': info.get('revenuePerShare'),
+                'book_value': info.get('bookValue'),
+            }
+            
+            # Dividends
+            fundamentals['dividends'] = {
+                'dividend_rate': info.get('dividendRate'),
+                'dividend_yield': info.get('dividendYield'),
+                'payout_ratio': info.get('payoutRatio'),
+                'ex_dividend_date': info.get('exDividendDate'),
+                'five_year_avg_dividend_yield': info.get('fiveYearAvgDividendYield'),
+            }
+            
+            # Analyst Recommendations
+            fundamentals['analyst'] = {
+                'target_high': info.get('targetHighPrice'),
+                'target_low': info.get('targetLowPrice'),
+                'target_mean': info.get('targetMeanPrice'),
+                'target_median': info.get('targetMedianPrice'),
+                'recommendation': info.get('recommendationKey'),
+                'recommendation_mean': info.get('recommendationMean'),
+                'num_analysts': info.get('numberOfAnalystOpinions'),
+            }
+            
+            # Company Info
+            fundamentals['company_info'] = {
+                'name': info.get('longName', info.get('shortName', symbol)),
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+                'employees': info.get('fullTimeEmployees'),
+                'website': info.get('website'),
+                'description': info.get('longBusinessSummary', '')[:500] if info.get('longBusinessSummary') else '',
+            }
+            
+            fundamentals['source'] = 'Yahoo Finance'
+            
+    except Exception as e:
+        pass
+    
+    return fundamentals
+
+def get_financial_statements(symbol):
+    """Fetch financial statements for Piotroski F-Score calculation"""
+    try:
+        import io
+        import sys
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        
+        ticker = yf.Ticker(symbol)
+        
+        # Get financial statements
+        income_stmt = ticker.income_stmt
+        balance_sheet = ticker.balance_sheet
+        cash_flow = ticker.cashflow
+        
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+        return {
+            'income_statement': income_stmt,
+            'balance_sheet': balance_sheet,
+            'cash_flow': cash_flow
+        }
+    except Exception as e:
+        return None
+
+def calculate_piotroski_score(symbol):
+    """
+    Calculate Piotroski F-Score (0-9 points)
+    
+    Profitability (4 points):
+    1. Positive ROA
+    2. Positive Operating Cash Flow
+    3. ROA increasing (vs prior year)
+    4. Cash Flow > Net Income (accruals)
+    
+    Leverage/Liquidity (3 points):
+    5. Decrease in long-term debt ratio
+    6. Increase in current ratio
+    7. No new shares issued
+    
+    Operating Efficiency (2 points):
+    8. Increase in gross margin
+    9. Increase in asset turnover
+    """
+    
+    score = 0
+    details = []
+    
+    try:
+        statements = get_financial_statements(symbol)
+        if not statements:
+            return None, ["Could not fetch financial statements"]
+        
+        income_stmt = statements['income_statement']
+        balance_sheet = statements['balance_sheet']
+        cash_flow = statements['cash_flow']
+        
+        if income_stmt is None or balance_sheet is None or cash_flow is None:
+            return None, ["Missing financial data"]
+        
+        if len(income_stmt.columns) < 2 or len(balance_sheet.columns) < 2:
+            return None, ["Insufficient historical data (need at least 2 years)"]
+        
+        # Helper function to safely get values
+        def safe_get(df, row_names, col_idx=0):
+            if df is None:
+                return None
+            for name in row_names if isinstance(row_names, list) else [row_names]:
+                if name in df.index:
+                    try:
+                        val = df.loc[name].iloc[col_idx]
+                        return float(val) if pd.notna(val) else None
+                    except:
+                        continue
+            return None
+        
+        # Current and prior year indices
+        curr = 0
+        prior = 1
+        
+        # Get values - trying multiple possible row names
+        net_income_curr = safe_get(income_stmt, ['Net Income', 'Net Income Common Stockholders', 'NetIncome'], curr)
+        net_income_prior = safe_get(income_stmt, ['Net Income', 'Net Income Common Stockholders', 'NetIncome'], prior)
+        
+        total_assets_curr = safe_get(balance_sheet, ['Total Assets', 'TotalAssets'], curr)
+        total_assets_prior = safe_get(balance_sheet, ['Total Assets', 'TotalAssets'], prior)
+        
+        operating_cf_curr = safe_get(cash_flow, ['Operating Cash Flow', 'Total Cash From Operating Activities', 'OperatingCashFlow'], curr)
+        
+        long_term_debt_curr = safe_get(balance_sheet, ['Long Term Debt', 'LongTermDebt', 'Long Term Debt And Capital Lease Obligation'], curr)
+        long_term_debt_prior = safe_get(balance_sheet, ['Long Term Debt', 'LongTermDebt', 'Long Term Debt And Capital Lease Obligation'], prior)
+        
+        current_assets_curr = safe_get(balance_sheet, ['Current Assets', 'Total Current Assets', 'CurrentAssets'], curr)
+        current_assets_prior = safe_get(balance_sheet, ['Current Assets', 'Total Current Assets', 'CurrentAssets'], prior)
+        
+        current_liab_curr = safe_get(balance_sheet, ['Current Liabilities', 'Total Current Liabilities', 'CurrentLiabilities'], curr)
+        current_liab_prior = safe_get(balance_sheet, ['Current Liabilities', 'Total Current Liabilities', 'CurrentLiabilities'], prior)
+        
+        shares_curr = safe_get(balance_sheet, ['Share Issued', 'Common Stock Shares Outstanding', 'Ordinary Shares Number'], curr)
+        shares_prior = safe_get(balance_sheet, ['Share Issued', 'Common Stock Shares Outstanding', 'Ordinary Shares Number'], prior)
+        
+        gross_profit_curr = safe_get(income_stmt, ['Gross Profit', 'GrossProfit'], curr)
+        gross_profit_prior = safe_get(income_stmt, ['Gross Profit', 'GrossProfit'], prior)
+        
+        revenue_curr = safe_get(income_stmt, ['Total Revenue', 'Revenue', 'TotalRevenue'], curr)
+        revenue_prior = safe_get(income_stmt, ['Total Revenue', 'Revenue', 'TotalRevenue'], prior)
+        
+        # === PROFITABILITY (4 points) ===
+        
+        # 1. Positive ROA
+        if net_income_curr is not None and total_assets_curr is not None and total_assets_curr > 0:
+            roa_curr = net_income_curr / total_assets_curr
+            if roa_curr > 0:
+                score += 1
+                details.append("✅ Positive ROA ({:.2%})".format(roa_curr))
+            else:
+                details.append("❌ Negative ROA ({:.2%})".format(roa_curr))
+        else:
+            details.append("⚠️ ROA: Insufficient data")
+        
+        # 2. Positive Operating Cash Flow
+        if operating_cf_curr is not None:
+            if operating_cf_curr > 0:
+                score += 1
+                details.append("✅ Positive Operating Cash Flow (${:,.0f})".format(operating_cf_curr))
+            else:
+                details.append("❌ Negative Operating Cash Flow (${:,.0f})".format(operating_cf_curr))
+        else:
+            details.append("⚠️ Operating Cash Flow: Insufficient data")
+        
+        # 3. ROA increasing
+        if all(v is not None for v in [net_income_curr, net_income_prior, total_assets_curr, total_assets_prior]) and total_assets_curr > 0 and total_assets_prior > 0:
+            roa_curr = net_income_curr / total_assets_curr
+            roa_prior = net_income_prior / total_assets_prior
+            if roa_curr > roa_prior:
+                score += 1
+                details.append("✅ ROA Increasing ({:.2%} → {:.2%})".format(roa_prior, roa_curr))
+            else:
+                details.append("❌ ROA Declining ({:.2%} → {:.2%})".format(roa_prior, roa_curr))
+        else:
+            details.append("⚠️ ROA Trend: Insufficient data")
+        
+        # 4. Operating Cash Flow > Net Income (Quality of Earnings)
+        if operating_cf_curr is not None and net_income_curr is not None:
+            if operating_cf_curr > net_income_curr:
+                score += 1
+                details.append("✅ Cash Flow > Net Income (Quality earnings)")
+            else:
+                details.append("❌ Cash Flow < Net Income (Accrual concerns)")
+        else:
+            details.append("⚠️ Accruals: Insufficient data")
+        
+        # === LEVERAGE & LIQUIDITY (3 points) ===
+        
+        # 5. Decrease in Long-term Debt Ratio
+        if all(v is not None for v in [long_term_debt_curr, long_term_debt_prior, total_assets_curr, total_assets_prior]) and total_assets_curr > 0 and total_assets_prior > 0:
+            debt_ratio_curr = long_term_debt_curr / total_assets_curr
+            debt_ratio_prior = long_term_debt_prior / total_assets_prior
+            if debt_ratio_curr <= debt_ratio_prior:
+                score += 1
+                details.append("✅ Debt Ratio Stable/Decreasing ({:.2%} → {:.2%})".format(debt_ratio_prior, debt_ratio_curr))
+            else:
+                details.append("❌ Debt Ratio Increasing ({:.2%} → {:.2%})".format(debt_ratio_prior, debt_ratio_curr))
+        else:
+            # No debt could be good
+            if long_term_debt_curr == 0 or long_term_debt_curr is None:
+                score += 1
+                details.append("✅ No/Minimal Long-term Debt")
+            else:
+                details.append("⚠️ Debt Ratio: Insufficient data")
+        
+        # 6. Increase in Current Ratio
+        if all(v is not None for v in [current_assets_curr, current_assets_prior, current_liab_curr, current_liab_prior]) and current_liab_curr > 0 and current_liab_prior > 0:
+            curr_ratio_curr = current_assets_curr / current_liab_curr
+            curr_ratio_prior = current_assets_prior / current_liab_prior
+            if curr_ratio_curr >= curr_ratio_prior:
+                score += 1
+                details.append("✅ Current Ratio Stable/Improving ({:.2f} → {:.2f})".format(curr_ratio_prior, curr_ratio_curr))
+            else:
+                details.append("❌ Current Ratio Declining ({:.2f} → {:.2f})".format(curr_ratio_prior, curr_ratio_curr))
+        else:
+            details.append("⚠️ Current Ratio: Insufficient data")
+        
+        # 7. No Dilution (shares not increased)
+        if shares_curr is not None and shares_prior is not None:
+            if shares_curr <= shares_prior:
+                score += 1
+                details.append("✅ No Share Dilution")
+            else:
+                dilution = ((shares_curr - shares_prior) / shares_prior) * 100
+                details.append("❌ Share Dilution ({:.1f}% increase)".format(dilution))
+        else:
+            details.append("⚠️ Share Count: Insufficient data")
+        
+        # === OPERATING EFFICIENCY (2 points) ===
+        
+        # 8. Gross Margin Increasing
+        if all(v is not None for v in [gross_profit_curr, gross_profit_prior, revenue_curr, revenue_prior]) and revenue_curr > 0 and revenue_prior > 0:
+            gm_curr = gross_profit_curr / revenue_curr
+            gm_prior = gross_profit_prior / revenue_prior
+            if gm_curr >= gm_prior:
+                score += 1
+                details.append("✅ Gross Margin Stable/Improving ({:.2%} → {:.2%})".format(gm_prior, gm_curr))
+            else:
+                details.append("❌ Gross Margin Declining ({:.2%} → {:.2%})".format(gm_prior, gm_curr))
+        else:
+            details.append("⚠️ Gross Margin: Insufficient data")
+        
+        # 9. Asset Turnover Increasing
+        if all(v is not None for v in [revenue_curr, revenue_prior, total_assets_curr, total_assets_prior]) and total_assets_curr > 0 and total_assets_prior > 0:
+            at_curr = revenue_curr / total_assets_curr
+            at_prior = revenue_prior / total_assets_prior
+            if at_curr >= at_prior:
+                score += 1
+                details.append("✅ Asset Turnover Stable/Improving ({:.2f} → {:.2f})".format(at_prior, at_curr))
+            else:
+                details.append("❌ Asset Turnover Declining ({:.2f} → {:.2f})".format(at_prior, at_curr))
+        else:
+            details.append("⚠️ Asset Turnover: Insufficient data")
+        
+        return score, details
+        
+    except Exception as e:
+        return None, [f"Error calculating score: {str(e)}"]
+
+def get_earnings_calendar(symbol, api_keys=None):
+    """Get upcoming earnings dates for a stock"""
+    if api_keys is None:
+        api_keys = {}
+    
+    earnings_data = {
+        'next_earnings': None,
+        'earnings_history': [],
+        'source': None
+    }
+    
+    # Try Yahoo Finance first
+    try:
+        import io
+        import sys
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+        
+        ticker = yf.Ticker(symbol)
+        calendar = ticker.calendar
+        earnings_dates = ticker.earnings_dates
+        
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+        if calendar is not None and not calendar.empty:
+            if isinstance(calendar, pd.DataFrame):
+                if 'Earnings Date' in calendar.columns:
+                    earnings_data['next_earnings'] = calendar['Earnings Date'].iloc[0] if len(calendar) > 0 else None
+                elif len(calendar.columns) > 0:
+                    # Try to find earnings date in the calendar
+                    for col in calendar.columns:
+                        if 'earning' in col.lower():
+                            earnings_data['next_earnings'] = calendar[col].iloc[0]
+                            break
+        
+        if earnings_dates is not None and not earnings_dates.empty:
+            history = []
+            for date, row in earnings_dates.head(8).iterrows():
+                history.append({
+                    'date': date,
+                    'eps_estimate': row.get('EPS Estimate'),
+                    'eps_actual': row.get('Reported EPS'),
+                    'surprise': row.get('Surprise(%)'),
+                })
+            earnings_data['earnings_history'] = history
+        
+        earnings_data['source'] = 'Yahoo Finance'
+        
+    except Exception as e:
+        pass
+    
+    # Try Finnhub if available
+    if api_keys.get('finnhub') and not earnings_data['earnings_history']:
+        try:
+            url = f"https://finnhub.io/api/v1/calendar/earnings?symbol={symbol}&token={api_keys['finnhub']}"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('earningsCalendar'):
+                    for item in data['earningsCalendar'][:8]:
+                        earnings_data['earnings_history'].append({
+                            'date': item.get('date'),
+                            'eps_estimate': item.get('epsEstimate'),
+                            'eps_actual': item.get('epsActual'),
+                            'surprise': None,
+                            'quarter': item.get('quarter'),
+                        })
+                    earnings_data['source'] = 'Finnhub'
+        except:
+            pass
+    
+    return earnings_data
+
+def get_economic_calendar(api_keys=None):
+    """Get upcoming economic events"""
+    if api_keys is None:
+        api_keys = {}
+    
+    events = []
+    
+    # Try Finnhub Economic Calendar
+    if api_keys.get('finnhub'):
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            next_week = (datetime.now() + timedelta(days=14)).strftime('%Y-%m-%d')
+            
+            url = f"https://finnhub.io/api/v1/calendar/economic?from={today}&to={next_week}&token={api_keys['finnhub']}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('economicCalendar'):
+                    for item in data['economicCalendar'][:30]:
+                        impact = item.get('impact', 'low')
+                        events.append({
+                            'date': item.get('time', item.get('date')),
+                            'event': item.get('event'),
+                            'country': item.get('country', 'US'),
+                            'impact': impact,
+                            'actual': item.get('actual'),
+                            'estimate': item.get('estimate'),
+                            'previous': item.get('prev'),
+                            'unit': item.get('unit', ''),
+                        })
+                return events, 'Finnhub'
+        except:
+            pass
+    
+    # Fallback: Get from RSS feeds or hardcoded major events
+    # This is a simplified fallback - major recurring events
+    try:
+        major_events = [
+            {'event': 'Federal Reserve Interest Rate Decision', 'impact': 'high', 'country': 'US', 'recurring': 'Monthly'},
+            {'event': 'Non-Farm Payrolls', 'impact': 'high', 'country': 'US', 'recurring': 'First Friday of month'},
+            {'event': 'CPI Inflation Data', 'impact': 'high', 'country': 'US', 'recurring': 'Monthly'},
+            {'event': 'GDP Growth Rate', 'impact': 'high', 'country': 'US', 'recurring': 'Quarterly'},
+            {'event': 'Unemployment Rate', 'impact': 'medium', 'country': 'US', 'recurring': 'Monthly'},
+            {'event': 'Retail Sales', 'impact': 'medium', 'country': 'US', 'recurring': 'Monthly'},
+        ]
+        return major_events, 'Reference (add Finnhub API for live data)'
+    except:
+        return [], None
+
 def analyze_sentiment(text):
     """Analyze sentiment of text using TextBlob"""
     try:
@@ -1200,9 +1670,10 @@ def main():
     st.divider()
     
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📈 Stock Research", 
         "🧮 Portfolio Calculator", 
+        "📅 Economic Calendar",
         "📰 Economic News",
         "🏢 Insurance News"
     ])
@@ -1403,6 +1874,269 @@ def main():
                                      f"{avg_sentiment:.2f}")
                         else:
                             st.info("📭 No recent news available for this stock. Try adding a Finnhub API key for better news coverage.")
+                        
+                        # ============ FUNDAMENTAL ANALYSIS SECTION ============
+                        st.subheader("📊 Fundamental Analysis")
+                        
+                        with st.spinner("Fetching fundamental data..."):
+                            fundamentals = get_fundamental_data(search_symbol, api_keys)
+                        
+                        if fundamentals and fundamentals.get('source'):
+                            st.caption(f"📡 Data source: {fundamentals['source']}")
+                            
+                            # Company Overview
+                            if fundamentals.get('company_info'):
+                                company = fundamentals['company_info']
+                                if company.get('name'):
+                                    st.markdown(f"**{company.get('name')}** | {company.get('sector', 'N/A')} | {company.get('industry', 'N/A')}")
+                                if company.get('description'):
+                                    with st.expander("Company Description"):
+                                        st.write(company['description'])
+                            
+                            # Key Metrics in columns
+                            st.markdown("#### Key Valuation Metrics")
+                            val = fundamentals.get('valuation', {})
+                            m1, m2, m3, m4, m5 = st.columns(5)
+                            
+                            with m1:
+                                mc = val.get('market_cap')
+                                if mc:
+                                    if mc >= 1e12:
+                                        mc_str = f"${mc/1e12:.2f}T"
+                                    elif mc >= 1e9:
+                                        mc_str = f"${mc/1e9:.2f}B"
+                                    else:
+                                        mc_str = f"${mc/1e6:.2f}M"
+                                    st.metric("Market Cap", mc_str)
+                                else:
+                                    st.metric("Market Cap", "N/A")
+                            
+                            with m2:
+                                pe = val.get('pe_ratio')
+                                st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
+                            
+                            with m3:
+                                fpe = val.get('forward_pe')
+                                st.metric("Forward P/E", f"{fpe:.2f}" if fpe else "N/A")
+                            
+                            with m4:
+                                peg = val.get('peg_ratio')
+                                st.metric("PEG Ratio", f"{peg:.2f}" if peg else "N/A")
+                            
+                            with m5:
+                                pb = val.get('price_to_book')
+                                st.metric("P/B Ratio", f"{pb:.2f}" if pb else "N/A")
+                            
+                            # Profitability Metrics
+                            st.markdown("#### Profitability")
+                            prof = fundamentals.get('profitability', {})
+                            p1, p2, p3, p4, p5 = st.columns(5)
+                            
+                            with p1:
+                                pm = prof.get('profit_margin')
+                                st.metric("Profit Margin", f"{pm*100:.1f}%" if pm else "N/A")
+                            
+                            with p2:
+                                om = prof.get('operating_margin')
+                                st.metric("Operating Margin", f"{om*100:.1f}%" if om else "N/A")
+                            
+                            with p3:
+                                roe = prof.get('return_on_equity')
+                                st.metric("ROE", f"{roe*100:.1f}%" if roe else "N/A")
+                            
+                            with p4:
+                                roa = prof.get('return_on_assets')
+                                st.metric("ROA", f"{roa*100:.1f}%" if roa else "N/A")
+                            
+                            with p5:
+                                eps = prof.get('eps')
+                                st.metric("EPS (TTM)", f"${eps:.2f}" if eps else "N/A")
+                            
+                            # Financial Health
+                            st.markdown("#### Financial Health")
+                            health = fundamentals.get('financial_health', {})
+                            h1, h2, h3, h4 = st.columns(4)
+                            
+                            with h1:
+                                dte = health.get('debt_to_equity')
+                                color = "normal" if dte is None else ("inverse" if dte > 100 else "normal")
+                                st.metric("Debt/Equity", f"{dte:.1f}%" if dte else "N/A")
+                            
+                            with h2:
+                                cr = health.get('current_ratio')
+                                st.metric("Current Ratio", f"{cr:.2f}" if cr else "N/A")
+                            
+                            with h3:
+                                fcf = health.get('free_cash_flow')
+                                if fcf:
+                                    fcf_str = f"${fcf/1e9:.2f}B" if abs(fcf) >= 1e9 else f"${fcf/1e6:.1f}M"
+                                    st.metric("Free Cash Flow", fcf_str)
+                                else:
+                                    st.metric("Free Cash Flow", "N/A")
+                            
+                            with h4:
+                                td = health.get('total_debt')
+                                if td:
+                                    td_str = f"${td/1e9:.2f}B" if td >= 1e9 else f"${td/1e6:.1f}M"
+                                    st.metric("Total Debt", td_str)
+                                else:
+                                    st.metric("Total Debt", "N/A")
+                            
+                            # Growth & Dividends
+                            grow_col, div_col = st.columns(2)
+                            
+                            with grow_col:
+                                st.markdown("#### Growth")
+                                growth = fundamentals.get('growth', {})
+                                rg = growth.get('revenue_growth')
+                                eg = growth.get('earnings_growth')
+                                
+                                if rg is not None:
+                                    st.metric("Revenue Growth (YoY)", f"{rg*100:+.1f}%")
+                                if eg is not None:
+                                    st.metric("Earnings Growth (YoY)", f"{eg*100:+.1f}%")
+                            
+                            with div_col:
+                                st.markdown("#### Dividends")
+                                div = fundamentals.get('dividends', {})
+                                dy = div.get('dividend_yield')
+                                dr = div.get('dividend_rate')
+                                pr = div.get('payout_ratio')
+                                
+                                if dy:
+                                    st.metric("Dividend Yield", f"{dy*100:.2f}%")
+                                elif dr:
+                                    st.metric("Annual Dividend", f"${dr:.2f}")
+                                else:
+                                    st.write("No dividend")
+                                
+                                if pr:
+                                    st.metric("Payout Ratio", f"{pr*100:.1f}%")
+                            
+                            # Analyst Ratings
+                            st.markdown("#### Analyst Recommendations")
+                            analyst = fundamentals.get('analyst', {})
+                            
+                            if analyst.get('target_mean') or analyst.get('recommendation'):
+                                a1, a2, a3, a4 = st.columns(4)
+                                
+                                with a1:
+                                    rec = analyst.get('recommendation', '').upper()
+                                    if rec:
+                                        rec_colors = {'BUY': '🟢', 'STRONG_BUY': '🟢', 'OUTPERFORM': '🟢',
+                                                     'HOLD': '🟡', 'NEUTRAL': '🟡', 
+                                                     'SELL': '🔴', 'UNDERPERFORM': '🔴', 'STRONG_SELL': '🔴'}
+                                        icon = rec_colors.get(rec, '⚪')
+                                        st.metric("Rating", f"{icon} {rec.replace('_', ' ')}")
+                                
+                                with a2:
+                                    tm = analyst.get('target_mean')
+                                    if tm:
+                                        upside = ((tm - current_price) / current_price) * 100
+                                        st.metric("Price Target (Avg)", f"${tm:.2f}", f"{upside:+.1f}%")
+                                
+                                with a3:
+                                    tl = analyst.get('target_low')
+                                    if tl:
+                                        st.metric("Target Low", f"${tl:.2f}")
+                                
+                                with a4:
+                                    th = analyst.get('target_high')
+                                    if th:
+                                        st.metric("Target High", f"${th:.2f}")
+                                
+                                na = analyst.get('num_analysts')
+                                if na:
+                                    st.caption(f"Based on {na} analyst(s)")
+                            else:
+                                st.info("No analyst coverage available")
+                            
+                            # ============ PIOTROSKI F-SCORE ============
+                            st.markdown("#### 📈 Piotroski F-Score")
+                            st.caption("A 9-point scoring system measuring financial strength (higher is better)")
+                            
+                            with st.spinner("Calculating Piotroski F-Score..."):
+                                f_score, score_details = calculate_piotroski_score(search_symbol)
+                            
+                            if f_score is not None:
+                                # Score display with color coding
+                                score_col, detail_col = st.columns([1, 2])
+                                
+                                with score_col:
+                                    if f_score >= 7:
+                                        st.success(f"### F-Score: {f_score}/9")
+                                        st.write("**Strong** financial position")
+                                    elif f_score >= 4:
+                                        st.warning(f"### F-Score: {f_score}/9")
+                                        st.write("**Average** financial position")
+                                    else:
+                                        st.error(f"### F-Score: {f_score}/9")
+                                        st.write("**Weak** financial position")
+                                    
+                                    # Score interpretation
+                                    st.markdown("""
+                                    **Interpretation:**
+                                    - 8-9: Very Strong
+                                    - 6-7: Strong
+                                    - 4-5: Average
+                                    - 2-3: Weak
+                                    - 0-1: Very Weak
+                                    """)
+                                
+                                with detail_col:
+                                    st.markdown("**Score Breakdown:**")
+                                    
+                                    # Group by category
+                                    st.markdown("*Profitability (4 pts)*")
+                                    for detail in score_details[:4]:
+                                        st.write(detail)
+                                    
+                                    st.markdown("*Leverage & Liquidity (3 pts)*")
+                                    for detail in score_details[4:7]:
+                                        st.write(detail)
+                                    
+                                    st.markdown("*Operating Efficiency (2 pts)*")
+                                    for detail in score_details[7:9]:
+                                        st.write(detail)
+                            else:
+                                st.warning("Could not calculate Piotroski F-Score")
+                                for detail in score_details:
+                                    st.write(detail)
+                            
+                            # ============ EARNINGS CALENDAR ============
+                            st.markdown("#### 📅 Earnings History & Upcoming")
+                            
+                            with st.spinner("Fetching earnings data..."):
+                                earnings_data = get_earnings_calendar(search_symbol, api_keys)
+                            
+                            if earnings_data.get('earnings_history'):
+                                earnings_df = pd.DataFrame(earnings_data['earnings_history'])
+                                
+                                # Format the dataframe
+                                if 'date' in earnings_df.columns:
+                                    earnings_df['date'] = pd.to_datetime(earnings_df['date']).dt.strftime('%Y-%m-%d')
+                                
+                                display_cols = ['date', 'eps_estimate', 'eps_actual', 'surprise']
+                                display_cols = [c for c in display_cols if c in earnings_df.columns]
+                                
+                                st.dataframe(
+                                    earnings_df[display_cols].rename(columns={
+                                        'date': 'Date',
+                                        'eps_estimate': 'EPS Estimate',
+                                        'eps_actual': 'EPS Actual',
+                                        'surprise': 'Surprise %'
+                                    }),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                                
+                                if earnings_data.get('source'):
+                                    st.caption(f"Source: {earnings_data['source']}")
+                            else:
+                                st.info("No earnings history available")
+                        
+                        else:
+                            st.warning("Could not fetch fundamental data for this symbol")
                 else:
                     st.error(f"Could not find data for symbol: {search_symbol}. Please try again in a few moments (API rate limits may apply).")
     
@@ -1695,8 +2429,215 @@ def main():
                         with prob_col2:
                             st.metric("Probability of Loss", f"{prob_loss*100:.1f}%")
     
-    # ============ TAB 3: ECONOMIC NEWS ============
+    # ============ TAB 3: ECONOMIC CALENDAR ============
     with tab3:
+        st.header("📅 Economic & Earnings Calendar")
+        
+        cal_tab1, cal_tab2 = st.tabs(["🌍 Economic Events", "📊 Earnings Calendar"])
+        
+        # Economic Events Tab
+        with cal_tab1:
+            st.subheader("Upcoming Economic Events")
+            
+            if not api_keys.get('finnhub'):
+                st.warning("⚠️ Add a Finnhub API key in the sidebar to see live economic events")
+            
+            with st.spinner("Fetching economic calendar..."):
+                events, events_source = get_economic_calendar(api_keys)
+            
+            if events:
+                if events_source:
+                    st.caption(f"📡 Data source: {events_source}")
+                
+                # Filter by impact
+                impact_filter = st.multiselect(
+                    "Filter by Impact",
+                    options=['high', 'medium', 'low'],
+                    default=['high', 'medium']
+                )
+                
+                # Filter events
+                if events_source == 'Finnhub':
+                    filtered_events = [e for e in events if e.get('impact', 'low').lower() in impact_filter]
+                else:
+                    filtered_events = events
+                
+                if filtered_events:
+                    for event in filtered_events:
+                        impact = event.get('impact', 'medium').lower()
+                        if impact == 'high':
+                            impact_icon = "🔴"
+                        elif impact == 'medium':
+                            impact_icon = "🟡"
+                        else:
+                            impact_icon = "🟢"
+                        
+                        country = event.get('country', 'US')
+                        country_flag = '🇺🇸' if country == 'US' else '🌍'
+                        
+                        with st.container():
+                            col1, col2 = st.columns([3, 1])
+                            
+                            with col1:
+                                st.markdown(f"**{impact_icon} {event.get('event', 'Unknown Event')}**")
+                                
+                                date_str = event.get('date', '')
+                                if date_str:
+                                    st.caption(f"{country_flag} {country} | {date_str}")
+                                
+                                # Show actual vs estimate if available
+                                actual = event.get('actual')
+                                estimate = event.get('estimate')
+                                previous = event.get('previous')
+                                
+                                if actual is not None or estimate is not None or previous is not None:
+                                    metrics = []
+                                    if previous is not None:
+                                        metrics.append(f"Previous: {previous}")
+                                    if estimate is not None:
+                                        metrics.append(f"Forecast: {estimate}")
+                                    if actual is not None:
+                                        metrics.append(f"**Actual: {actual}**")
+                                    st.write(" | ".join(metrics))
+                            
+                            with col2:
+                                recurring = event.get('recurring')
+                                if recurring:
+                                    st.caption(recurring)
+                            
+                            st.divider()
+                else:
+                    st.info("No events matching your filter")
+            else:
+                st.info("No economic events found. Add a Finnhub API key for live data.")
+            
+            # Key dates reference
+            with st.expander("📋 Key Recurring Economic Events"):
+                st.markdown("""
+                | Event | Typical Release | Impact |
+                |-------|-----------------|--------|
+                | **Fed Interest Rate Decision** | 8x/year (FOMC meetings) | 🔴 High |
+                | **Non-Farm Payrolls** | First Friday of month | 🔴 High |
+                | **CPI (Inflation)** | ~10th-15th of month | 🔴 High |
+                | **GDP Growth** | Quarterly | 🔴 High |
+                | **Retail Sales** | ~15th of month | 🟡 Medium |
+                | **Unemployment Claims** | Weekly (Thursday) | 🟡 Medium |
+                | **ISM Manufacturing PMI** | First business day of month | 🟡 Medium |
+                | **Consumer Confidence** | Last Tuesday of month | 🟡 Medium |
+                """)
+        
+        # Earnings Calendar Tab
+        with cal_tab2:
+            st.subheader("Earnings Calendar Lookup")
+            
+            # Search for specific stock earnings
+            earnings_symbol = st.text_input("Enter Stock Symbol", value="AAPL", key="earnings_lookup").upper()
+            
+            if st.button("🔍 Get Earnings Info", key="earnings_btn"):
+                if earnings_symbol:
+                    with st.spinner(f"Fetching earnings for {earnings_symbol}..."):
+                        earnings_data = get_earnings_calendar(earnings_symbol, api_keys)
+                    
+                    if earnings_data:
+                        st.markdown(f"### {earnings_symbol} Earnings")
+                        
+                        # Next earnings date
+                        next_earnings = earnings_data.get('next_earnings')
+                        if next_earnings:
+                            st.info(f"📅 **Next Earnings Date:** {next_earnings}")
+                        
+                        # Earnings history
+                        if earnings_data.get('earnings_history'):
+                            st.markdown("#### Earnings History")
+                            
+                            history = earnings_data['earnings_history']
+                            
+                            # Create DataFrame for display
+                            df = pd.DataFrame(history)
+                            
+                            if not df.empty:
+                                # Format columns
+                                if 'date' in df.columns:
+                                    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+                                
+                                # Calculate beat/miss
+                                if 'eps_estimate' in df.columns and 'eps_actual' in df.columns:
+                                    def calc_status(row):
+                                        if pd.isna(row['eps_actual']) or pd.isna(row['eps_estimate']):
+                                            return '⏳ Pending'
+                                        elif row['eps_actual'] > row['eps_estimate']:
+                                            return '✅ Beat'
+                                        elif row['eps_actual'] < row['eps_estimate']:
+                                            return '❌ Miss'
+                                        else:
+                                            return '➖ Met'
+                                    df['Status'] = df.apply(calc_status, axis=1)
+                                
+                                # Display
+                                st.dataframe(
+                                    df.rename(columns={
+                                        'date': 'Date',
+                                        'eps_estimate': 'EPS Est.',
+                                        'eps_actual': 'EPS Actual',
+                                        'surprise': 'Surprise %',
+                                        'quarter': 'Quarter'
+                                    }),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                                
+                                # Visualization
+                                if 'eps_estimate' in df.columns and 'eps_actual' in df.columns:
+                                    chart_df = df.dropna(subset=['eps_actual'])
+                                    if not chart_df.empty and len(chart_df) > 1:
+                                        fig = go.Figure()
+                                        
+                                        fig.add_trace(go.Bar(
+                                            x=chart_df['date'],
+                                            y=chart_df['eps_estimate'],
+                                            name='Estimate',
+                                            marker_color='gray'
+                                        ))
+                                        
+                                        fig.add_trace(go.Bar(
+                                            x=chart_df['date'],
+                                            y=chart_df['eps_actual'],
+                                            name='Actual',
+                                            marker_color=['green' if a > e else 'red' 
+                                                         for a, e in zip(chart_df['eps_actual'], chart_df['eps_estimate'])]
+                                        ))
+                                        
+                                        fig.update_layout(
+                                            title=f'{earnings_symbol} EPS: Estimate vs Actual',
+                                            barmode='group',
+                                            template='plotly_dark',
+                                            height=400
+                                        )
+                                        
+                                        st.plotly_chart(fig, use_container_width=True)
+                            
+                            if earnings_data.get('source'):
+                                st.caption(f"Source: {earnings_data['source']}")
+                        else:
+                            st.info("No earnings history available")
+                    else:
+                        st.error("Could not fetch earnings data")
+            
+            # Popular stocks quick lookup
+            st.markdown("---")
+            st.markdown("#### Quick Lookup - Popular Stocks")
+            
+            popular_stocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'JPM']
+            
+            cols = st.columns(4)
+            for i, stock in enumerate(popular_stocks):
+                with cols[i % 4]:
+                    if st.button(stock, key=f"quick_{stock}"):
+                        st.session_state['earnings_lookup'] = stock
+                        st.rerun()
+    
+    # ============ TAB 4: ECONOMIC NEWS ============
+    with tab4:
         st.header("📰 Economic & Market News")
         
         if st.button("🔄 Refresh News", key="refresh_econ"):
@@ -1729,8 +2670,8 @@ def main():
         else:
             st.info("Unable to fetch economic news at this time. Please try again later.")
     
-    # ============ TAB 4: INSURANCE NEWS ============
-    with tab4:
+    # ============ TAB 5: INSURANCE NEWS ============
+    with tab5:
         st.header("🏢 Insurance Industry News")
         
         if st.button("🔄 Refresh News", key="refresh_insurance"):
