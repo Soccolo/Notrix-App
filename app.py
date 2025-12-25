@@ -1319,7 +1319,7 @@ def get_insurance_company_data():
         'BEZ.L': {'cor': 79.0, 'year': '2024', 'note': 'Group COR'},
         'LRE.L': {'cor': 83.5, 'year': '2024', 'note': 'Group COR'},
         'PRU.L': {'cor': None, 'year': None, 'note': 'Life insurer - N/A'},
-        'ZURN.SW':{'cor': 92.4, 'year': '2025', 'note': 'P&C COR'}
+        'ZURN.SW': {'cor': 92.4, 'year': '2025', 'note': 'P&C COR'}
     }
     
     # US/Global brokers for comparison
@@ -1368,12 +1368,12 @@ def get_insurance_company_data():
                     'name': info['name'],
                     'type': info['type'],
                     'market': info['market'],
-                    'price': current_price,
+                    'price': current_price/1.06 if ticker == 'ZURN.SW' else current_price/100,
                     'change_pct': change_pct,
                     'pe_ratio': pe_ratio,
                     'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
                     'market_cap': market_cap,
-                    'currency': 'CHF' if ticker == 'ZURN.SW' else 'GBP',
+                    'currency': 'GBP',
                     'cor': cor_info.get('cor'),
                     'cor_year': cor_info.get('year'),
                     'cor_note': cor_info.get('note')
