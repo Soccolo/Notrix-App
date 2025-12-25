@@ -1373,7 +1373,7 @@ def get_insurance_company_data():
                     'pe_ratio': pe_ratio,
                     'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
                     'market_cap': market_cap,
-                    'currency': 'GBP',
+                    'currency': 'CHF' if ticker == 'ZURN.SW' else 'GBP',
                     'cor': cor_info.get('cor'),
                     'cor_year': cor_info.get('year'),
                     'cor_note': cor_info.get('note')
