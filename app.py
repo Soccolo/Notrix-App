@@ -1410,7 +1410,7 @@ def get_market_rates_data():
     
     market_rates = {
         'last_updated': 'Q4 2024 / Q1 2025',
-        'sources': ['Marsh Global Insurance Market Index', 'Aon UK Market Insights', 'WTW FINEX'],
+        'sources': ['Marsh Global Insurance Market Index', 'Aon UK Market Insights', 'WTW FINEX', 'IUMI Stats Report', 'Risk Strategies'],
         
         'global_composite': {
             'rate': -2.0,
@@ -1498,6 +1498,36 @@ def get_market_rates_data():
                 'capacity': 'Adequate',
                 'notes': 'Market valued at ~$5.7B in 2024, growing at 5-8% CAGR. Focus on digital platforms and comprehensive coverage. Post-pandemic demand recovery.',
                 'source': 'Industry Reports 2024'
+            },
+            'marine_hull': {
+                'global_rate': 4.0,  # Range: +3% to +5%
+                'uk_rate': 3.0,
+                'us_rate': 5.0,
+                'trend': 'stabilizing',
+                'market_condition': 'Moderate - Stabilizing',
+                'capacity': 'Adequate',
+                'notes': 'Hull market settled after 5+ years of 10%+ annual increases. Baltimore Key Bridge (MV Dali) incident impacting reinsurance. Inflation driving claims costs up. New capacity entering London market.',
+                'source': 'WTW/Risk Strategies 2025'
+            },
+            'marine_cargo': {
+                'global_rate': -2.5,  # Range: -5% to 0%
+                'uk_rate': -3.0,
+                'us_rate': -2.0,
+                'trend': 'softening',
+                'market_condition': 'Moderate - Buyer Friendly',
+                'capacity': 'Increased',
+                'notes': 'Increased insurer capacity causing modest premium reductions since Q4 2023. Cargo theft up 27% in 2024 (avg $202K per theft). Stock inventory increases softening. War risk for Red Sea/Indian Ocean priced daily.',
+                'source': 'Risk Strategies/IUMI 2025'
+            },
+            'marine_liability_pi': {
+                'global_rate': 5.0,  # P&I renewals +5%
+                'uk_rate': 5.0,
+                'us_rate': 7.0,
+                'trend': 'increasing',
+                'market_condition': 'Moderate - Firming',
+                'capacity': 'Adequate',
+                'notes': 'P&I Club February 2025 renewals concluded at ~5% increases. Baltimore Key Bridge case creating uncertainty for 2026. Crew injury claims and US litigation driving pressure. Excess marine casualty seeing competition in higher layers.',
+                'source': 'Risk Strategies/P&I Clubs 2025'
             }
         },
         
@@ -3241,7 +3271,7 @@ def main():
             st.markdown("### 📋 Rate Changes by Line of Business")
             
             # Filter for key lines
-            key_lines = ['cyber', 'directors_officers', 'professional_indemnity', 'financial_institutions', 'business_travel', 'property', 'casualty_liability', 'motor']
+            key_lines = ['cyber', 'directors_officers', 'professional_indemnity', 'financial_institutions', 'business_travel', 'marine_hull', 'marine_cargo', 'marine_liability_pi', 'property', 'casualty_liability', 'motor']
             
             line_display_names = {
                 'cyber': '🔐 Cyber',
@@ -3249,6 +3279,9 @@ def main():
                 'professional_indemnity': '📜 Professional Indemnity (PI)',
                 'financial_institutions': '🏦 Financial Institutions',
                 'business_travel': '✈️ Business Travel',
+                'marine_hull': '🚢 Marine Hull & Machinery',
+                'marine_cargo': '📦 Marine Cargo',
+                'marine_liability_pi': '⚓ Marine P&I (Protection & Indemnity)',
                 'property': '🏢 Property',
                 'casualty_liability': '⚖️ Casualty / Liability',
                 'motor': '🚗 Motor'
@@ -3259,7 +3292,7 @@ def main():
                     line_data = market_rates['lines_of_business'][line_key]
                     display_name = line_display_names.get(line_key, line_key)
                     
-                    with st.expander(f"{display_name} | Global: **{line_data['global_rate']:+.1f}%** | UK: **{line_data['uk_rate']:+.1f}%**", expanded=(line_key in ['cyber', 'directors_officers', 'professional_indemnity', 'business_travel'])):
+                    with st.expander(f"{display_name} | Global: **{line_data['global_rate']:+.1f}%** | UK: **{line_data['uk_rate']:+.1f}%**", expanded=(line_key in ['cyber', 'directors_officers', 'professional_indemnity', 'business_travel', 'marine_cargo', 'marine_hull'])):
                         
                         rate_cols = st.columns(4)
                         
@@ -3317,6 +3350,12 @@ def main():
                 - 81% of UK clients saw premium decreases
                 - Buyer-friendly conditions expected to continue
                 - Insurers monitoring AI and ESG exposures
+                
+                **🚢 Marine Hull & Machinery**
+                - Market stabilizing after 5+ years of 10%+ increases
+                - Baltimore Key Bridge (MV Dali) impacting reinsurance
+                - Claims inflation a key concern
+                - New capacity entering London market
                 """)
             
             with insights_col2:
@@ -3326,6 +3365,12 @@ def main():
                 - Correction from 2019-2022 hard market
                 - New capacity entering market
                 - Competitive environment in 2025
+                
+                **📦 Marine Cargo**
+                - Rates softening (-5% to flat)
+                - Increased capacity since Q4 2023
+                - Cargo theft up 27% in 2024
+                - War risk for Red Sea priced daily
                 
                 **✈️ Business Travel**
                 - Market stable, growing at 5-8% CAGR
