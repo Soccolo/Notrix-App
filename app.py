@@ -3273,7 +3273,7 @@ def main():
                     "Global Composite",
                     f"{global_rate:+.1f}%",
                     delta="Decreasing" if global_rate < 0 else "Increasing",
-                    delta_color="normal" if global_rate < 0 else "inverse"
+                    delta_color="normal" if global_rate > 0 else "inverse"
                 )
             
             for i, (region, data) in enumerate(list(market_rates['regional_summary'].items())[:3]):
@@ -3318,7 +3318,7 @@ def main():
                         
                         with rate_cols[0]:
                             global_rate = line_data['global_rate']
-                            color = "normal" if global_rate <= 0 else "inverse"
+                            color = "normal" if global_rate => 0 else "inverse"
                             st.metric("Global Rate", f"{global_rate:+.1f}%")
                         
                         with rate_cols[1]:
