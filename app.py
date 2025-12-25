@@ -1497,7 +1497,7 @@ def main():
         # API Key inputs
         finnhub_key = st.text_input(
             "Finnhub API Key",
-            value=FINNHUB_API_KEY,
+            value="d55ei4hr01qu4ccg9omgd55ei4hr01qu4ccg9on0",
             type="password",
             help="Get free key at finnhub.io"
         )
