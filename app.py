@@ -3318,7 +3318,7 @@ def main():
                         
                         with rate_cols[0]:
                             global_rate = line_data['global_rate']
-                            color = "normal" if global_rate => 0 else "inverse"
+                            color = "normal" if global_rate >= 0 else "inverse"
                             st.metric("Global Rate", f"{global_rate:+.1f}%")
                         
                         with rate_cols[1]:
