@@ -1497,7 +1497,7 @@ def main():
         # API Key inputs
         finnhub_key = st.text_input(
             "Finnhub API Key",
-            value="d55ei4hr01qu4ccg9omgd55ei4hr01qu4ccg9on0",
+            value=FINNHUB_API_KEY,
             type="password",
             help="Get free key at finnhub.io"
         )
@@ -2004,14 +2004,26 @@ def main():
                                 pr = div.get('payout_ratio')
                                 
                                 if dy:
-                                    st.metric("Dividend Yield", f"{dy*100:.2f}%")
+                                    # Yahoo Finance format detection:
+                                    # If multiplying by 100 would give >20%, value is likely already a percentage
+                                    # (Most stocks have yields 0-6%, rarely above 15%)
+                                    if dy * 100 > 20:
+                                        # Already in percentage-like format (e.g., 0.44 = 0.44%)
+                                        st.metric("Dividend Yield", f"{dy:.2f}%")
+                                    else:
+                                        # Decimal format (e.g., 0.0044 = 0.44%)
+                                        st.metric("Dividend Yield", f"{dy*100:.2f}%")
                                 elif dr:
                                     st.metric("Annual Dividend", f"${dr:.2f}")
                                 else:
                                     st.write("No dividend")
                                 
                                 if pr:
-                                    st.metric("Payout Ratio", f"{pr*100:.1f}%")
+                                    # Payout ratio: same logic - if *100 > 200%, likely already percentage
+                                    if pr * 100 > 200:
+                                        st.metric("Payout Ratio", f"{pr:.1f}%")
+                                    else:
+                                        st.metric("Payout Ratio", f"{pr*100:.1f}%")
                             
                             # Analyst Ratings
                             st.markdown("#### Analyst Recommendations")
