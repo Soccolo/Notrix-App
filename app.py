@@ -1306,6 +1306,20 @@ def get_insurance_company_data():
         'PRU.L': {'name': 'Prudential', 'type': 'Life & Pensions', 'market': 'FTSE 100'},
     }
     
+    # Combined Operating Ratios (COR) - Latest reported figures
+    # COR = (Claims + Expenses) / Premiums - below 100% = underwriting profit
+    # Sources: Company annual/interim reports 2024
+    cor_data = {
+        'AV.L': {'cor': 94.5, 'year': '2024', 'note': 'GI COR'},
+        'ADM.L': {'cor': 88.2, 'year': '2024', 'note': 'UK Motor'},
+        'DLG.L': {'cor': 98.5, 'year': '2024', 'note': 'Ongoing operations'},
+        'LGEN.L': {'cor': None, 'year': None, 'note': 'Life insurer - N/A'},
+        'HSX.L': {'cor': 88.7, 'year': '2024', 'note': 'Group COR'},
+        'BEZ.L': {'cor': 79.0, 'year': '2024', 'note': 'Group COR'},
+        'LRE.L': {'cor': 83.5, 'year': '2024', 'note': 'Group COR'},
+        'PRU.L': {'cor': None, 'year': None, 'note': 'Life insurer - N/A'},
+    }
+    
     # US/Global brokers for comparison
     global_brokers = {
         'AON': {'name': 'Aon', 'type': 'Broker', 'market': 'NYSE'},
@@ -1344,6 +1358,9 @@ def get_insurance_company_data():
                 dividend_yield = stock_info.get('dividendYield')
                 market_cap = stock_info.get('marketCap')
                 
+                # Get COR data
+                cor_info = cor_data.get(ticker, {})
+                
                 results['uk_insurers'].append({
                     'ticker': ticker,
                     'name': info['name'],
@@ -1354,7 +1371,10 @@ def get_insurance_company_data():
                     'pe_ratio': pe_ratio,
                     'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
                     'market_cap': market_cap,
-                    'currency': 'GBP'
+                    'currency': 'GBP',
+                    'cor': cor_info.get('cor'),
+                    'cor_year': cor_info.get('year'),
+                    'cor_note': cor_info.get('note')
                 })
         except Exception as e:
             pass
@@ -3311,9 +3331,10 @@ def main():
                         
                         with rate_cols[3]:
                             condition = line_data['market_condition']
-                            if 'soft' in condition.lower() or 'buyer' in condition.lower():
+                            # From insurer perspective: Hard = good (green), Soft = bad (red)
+                            if 'hard' in condition.lower():
                                 condition_icon = "🟢"
-                            elif 'hard' in condition.lower():
+                            elif 'soft' in condition.lower() or 'buyer' in condition.lower():
                                 condition_icon = "🔴"
                             else:
                                 condition_icon = "🟡"
@@ -3414,15 +3435,20 @@ def main():
                             delta=f"{change:+.2f}%"
                         )
                         
-                        # Show additional info
+                        # Show additional info including COR
                         pe = company.get('pe_ratio')
                         div_yield = company.get('dividend_yield')
+                        cor = company.get('cor')
                         
                         info_parts = []
                         if pe:
                             info_parts.append(f"P/E: {pe:.1f}")
                         if div_yield:
-                            info_parts.append(f"Yield: {div_yield:.1f}%")
+                            info_parts.append(f"Yld: {div_yield:.1f}%")
+                        if cor:
+                            # Color code COR: <90% green, 90-100% yellow, >100% red
+                            cor_color = "🟢" if cor < 90 else "🟡" if cor < 100 else "🔴"
+                            info_parts.append(f"COR: {cor_color}{cor:.1f}%")
                         
                         if info_parts:
                             st.caption(" | ".join(info_parts))
@@ -3430,9 +3456,10 @@ def main():
                 
                 # Table view
                 with st.expander("📊 View Full Table"):
-                    display_df = uk_df[['name', 'ticker', 'type', 'market', 'price', 'change_pct', 'pe_ratio', 'dividend_yield']].copy()
-                    display_df.columns = ['Company', 'Ticker', 'Type', 'Index', 'Price (£)', 'Change %', 'P/E', 'Div Yield %']
+                    display_df = uk_df[['name', 'ticker', 'type', 'market', 'price', 'change_pct', 'pe_ratio', 'dividend_yield', 'cor']].copy()
+                    display_df.columns = ['Company', 'Ticker', 'Type', 'Index', 'Price (£)', 'Change %', 'P/E', 'Div Yield %', 'COR %']
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    st.caption("*COR = Combined Operating Ratio. <100% indicates underwriting profit. N/A for life insurers.*")
             else:
                 st.warning("Could not fetch UK insurer data. Markets may be closed.")
             
@@ -3461,10 +3488,11 @@ def main():
                         if pe:
                             info_parts.append(f"P/E: {pe:.1f}")
                         if div_yield:
-                            info_parts.append(f"Yield: {div_yield:.1f}%")
+                            info_parts.append(f"Yld: {div_yield:.1f}%")
                         
                         if info_parts:
                             st.caption(" | ".join(info_parts))
+                        st.caption("*Broker*")
             else:
                 st.warning("Could not fetch broker data. Markets may be closed.")
             
@@ -3478,11 +3506,11 @@ def main():
             Lloyd's of London is the world's leading insurance and reinsurance marketplace. 
             Key specialty insurers trading at Lloyd's include:
             
-            - **Hiscox** (HSX.L) - Specialty insurance, cyber, kidnap & ransom
-            - **Beazley** (BEZ.L) - Cyber, professional liability, property
-            - **Lancashire** (LRE.L) - Property catastrophe, marine, energy
+            - **Hiscox** (HSX.L) - Specialty insurance, cyber, kidnap & ransom | COR: 🟢 88.7%
+            - **Beazley** (BEZ.L) - Cyber, professional liability, property | COR: 🟢 79.0%
+            - **Lancashire** (LRE.L) - Property catastrophe, marine, energy | COR: 🟢 83.5%
             
-            Lloyd's reported **£52.3bn** gross written premium in 2023 with a combined ratio of **83.7%**.
+            Lloyd's reported **£52.3bn** gross written premium in 2023 with a combined ratio of **84.0%** 🟢
             """)
             
             # Key metrics reference
@@ -3492,10 +3520,16 @@ def main():
                 |--------|-------------|------------|
                 | **P/E Ratio** | Price to Earnings - valuation measure | 8-15 for insurers |
                 | **Dividend Yield** | Annual dividend / share price | 3-6% typical |
-                | **Combined Ratio** | (Claims + Expenses) / Premiums | <100% = profit |
+                | **Combined Ratio (COR)** | (Claims + Expenses) / Premiums | 🟢 <90% excellent, 🟡 90-100% ok, 🔴 >100% loss |
                 | **Loss Ratio** | Claims / Premiums | <60% = good |
                 | **ROE** | Return on Equity | >10% = good |
                 | **Solvency Ratio** | Capital / Required Capital | >150% = strong |
+                
+                **COR Interpretation:**
+                - **< 90%**: Excellent underwriting performance
+                - **90-95%**: Good, sustainable profitability  
+                - **95-100%**: Marginal underwriting profit
+                - **> 100%**: Underwriting loss (may still be profitable with investment income)
                 """)
     
     # ============ TAB 5: ECONOMIC NEWS ============
