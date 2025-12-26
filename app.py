@@ -1304,7 +1304,6 @@ def get_insurance_company_data():
         'BEZ.L': {'name': 'Beazley', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 100'},
         'LRE.L': {'name': 'Lancashire Holdings', 'type': 'Specialty/Lloyd\'s', 'market': 'FTSE 250'},
         'PRU.L': {'name': 'Prudential', 'type': 'Life & Pensions', 'market': 'FTSE 100'},
-        'ZURN.SW': {'name': 'Zurich Insurance Group', 'type': 'Composite', 'market': 'CBOE'}
     }
     
     # Combined Operating Ratios (COR) - Latest reported figures
@@ -1319,7 +1318,6 @@ def get_insurance_company_data():
         'BEZ.L': {'cor': 79.0, 'year': '2024', 'note': 'Group COR'},
         'LRE.L': {'cor': 83.5, 'year': '2024', 'note': 'Group COR'},
         'PRU.L': {'cor': None, 'year': None, 'note': 'Life insurer - N/A'},
-        'ZURN.SW': {'cor': 92.4, 'year': '2025', 'note': 'P&C COR'}
     }
     
     # US/Global brokers for comparison
@@ -1368,7 +1366,7 @@ def get_insurance_company_data():
                     'name': info['name'],
                     'type': info['type'],
                     'market': info['market'],
-                    'price': current_price/1.06 if ticker == 'ZURN.SW' else current_price/100,
+                    'price': current_price,
                     'change_pct': change_pct,
                     'pe_ratio': pe_ratio,
                     'dividend_yield': dividend_yield * 100 if dividend_yield and dividend_yield < 1 else dividend_yield,
@@ -3275,7 +3273,7 @@ def main():
                     "Global Composite",
                     f"{global_rate:+.1f}%",
                     delta="Decreasing" if global_rate < 0 else "Increasing",
-                    delta_color="normal" if global_rate > 0 else "inverse"
+                    delta_color="normal" if global_rate < 0 else "inverse"
                 )
             
             for i, (region, data) in enumerate(list(market_rates['regional_summary'].items())[:3]):
@@ -3320,7 +3318,7 @@ def main():
                         
                         with rate_cols[0]:
                             global_rate = line_data['global_rate']
-                            color = "normal" if global_rate >= 0 else "inverse"
+                            color = "normal" if global_rate <= 0 else "inverse"
                             st.metric("Global Rate", f"{global_rate:+.1f}%")
                         
                         with rate_cols[1]:
@@ -3572,7 +3570,7 @@ def main():
     with tab6:
         st.header("🏢 Insurance Industry News")
         
-        if st.button("🔄 Refresh News", key="refresh_insurance"):
+        if st.button("🔄 Refresh News", key="refresh_insurance_news"):
             st.cache_data.clear()
         
         with st.spinner("Loading news..."):
