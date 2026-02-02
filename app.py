@@ -1784,9 +1784,12 @@ def smooth_pdf(K_grid, pdf_raw):
     return pdf_smooth
 
 def union_of_lists(lists):
-    union = set()
+  if len(lists) == 0:
+    return [lists[0]]
+  elif len(lists) != 0:
+    union = set(lists[0]).intersection(set(lists[1]))
     for lst in lists:
-        union.update(lst)
+        union = union.intersection(set(lst))
     return list(union)
 
 def convolve_pdfs(x_lists, pdf_lists):
