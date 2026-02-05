@@ -1784,9 +1784,9 @@ def smooth_pdf(K_grid, pdf_raw):
     return pdf_smooth
 
 def union_of_lists(lists):
-  if len(lists) == 0:
+  if len(lists) == 1:
     return [lists[0]]
-  elif len(lists) != 0:
+  elif len(lists) != 1:
     union = set(lists[0]).intersection(set(lists[1]))
     for lst in lists:
         union = union.intersection(set(lst))
